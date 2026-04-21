@@ -124,7 +124,7 @@ Cache TTL (6h registered / 24h anonymous) keeps the hot-path free, so realised c
 
 - Comprehensive call uses `claude-sonnet-4-5`, `max_tokens: 12000`. In the extremely rare case Sonnet's reasoning runs over, the parser recovers gracefully and returns empty intelligence (the v5 scoring still produces a valid score).
 - Segment-aware conglomerate analysis (Berkshire Hathaway, Honeywell etc.) is **not** implemented — comprehensive call treats the company as a single entity.
-- WARN Act lookup is **not** implemented. The `large_employer_flag` covers the gap by noting site-specific cuts may occur outside of disclosed programmes.
+- WARN Act lookup is **not** implemented. The `large_employer_flag` covers the gap by noting site-specific cuts may occur outside of disclosed programmes. 
 
 ## Contact
 
