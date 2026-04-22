@@ -1,1175 +1,226 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>EjectSeat — Is your company about to cut jobs?</title>
-<meta name="description" content="Search any company. See their layoff risk score based on SEC filings and verified news. Free.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>EjectSeat — Layoff Risk Predictor</title>
+<meta name="description" content="Predict layoff risk for US-listed public companies using SEC filings, earnings transcripts, and Tier A/B media." />
 <style>
-:root{
-  --cream:#FAF8F5;--cream2:#F3F0EB;--cream3:#E8E2D9;
-  --slate:#1C2B3A;--slate2:#2D3F52;
-  --mid:#6B7F92;--soft:#94A3B4;
-  --coral:#D94F3D;--coral2:#E8604E;--coral-bg:#FEF2F0;
-  --sage:#2D7A5F;--sage-bg:#EEF7F3;
-  --amber:#C17F3B;--amber-bg:#FDF6EC;
-  --line:rgba(28,43,58,0.08);--line2:rgba(28,43,58,0.14);
-  --serif:'Instrument Serif',Georgia,serif;
-  --sans:'Geist',system-ui,sans-serif;
-  --mono:'Geist Mono',monospace;
-  --r:16px;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth}
-body{background:var(--cream);color:var(--slate);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  :root {
+    --bg: #0b0d10;
+    --panel: #14171c;
+    --panel-2: #1a1e24;
+    --border: #22272f;
+    --text: #e8ecf1;
+    --text-dim: #9ba3b0;
+    --text-faint: #6b7280;
+    --accent: #4f8fff;
+    --green: #10b981;
+    --amber: #f59e0b;
+    --red: #ef4444;
+    --red-soft: #fca5a5;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Inter, system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
 
-/* ── NAV ── */
-.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--line);background:rgba(250,248,245,0.96);backdrop-filter:blur(12px);position:sticky;top:0;z-index:200}
-.logo{font-family:var(--serif);font-size:20px;color:var(--slate);text-decoration:none;display:flex;align-items:center;gap:8px}
-.logo-dot{width:8px;height:8px;background:var(--coral);border-radius:50%;animation:blink 2s infinite}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.25}}
-.nav-right{display:flex;align-items:center;gap:12px}
-.nav-link{font-size:13px;color:var(--mid);text-decoration:none;font-weight:400}
-.nav-link:hover{color:var(--slate)}
-.nav-enterprise{font-size:13px;color:var(--coral);text-decoration:none;font-weight:500}
+  .wrap { max-width: 860px; margin: 0 auto; padding: 48px 24px 120px; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 40px; }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: -0.01em; }
+  .brand span { color: var(--accent); }
+  nav a { color: var(--text-dim); font-size: 14px; margin-left: 20px; }
 
-/* ── HERO ── */
-.hero{max-width:640px;margin:0 auto;padding:56px 24px 32px;text-align:center}
-.hero-badge{display:inline-flex;align-items:center;gap:6px;background:var(--coral-bg);border:1px solid rgba(217,79,61,.2);border-radius:100px;padding:4px 12px;font-family:var(--mono);font-size:11px;color:var(--coral);margin-bottom:20px}
-h1{font-family:var(--serif);font-size:clamp(36px,6vw,60px);line-height:1.08;letter-spacing:-.5px;color:var(--slate);margin-bottom:14px;font-weight:400}
-h1 em{font-style:italic;color:var(--coral)}
-.hero-sub{font-size:16px;color:var(--mid);line-height:1.65;margin-bottom:32px;max-width:480px;margin-left:auto;margin-right:auto}
+  h1 { font-size: 32px; line-height: 1.2; margin: 0 0 12px; letter-spacing: -0.02em; }
+  .lede { color: var(--text-dim); font-size: 16px; line-height: 1.55; margin: 0 0 32px; max-width: 620px; }
 
-/* ── SEARCH ── */
-.search-wrap{max-width:560px;margin:0 auto 12px}
-.search-row{display:flex;border-radius:12px;overflow:hidden;border:2px solid var(--line2);background:#fff;transition:border-color .15s;box-shadow:0 2px 20px rgba(28,43,58,.07)}
-.search-row:focus-within{border-color:var(--coral)}
-.search-input{flex:1;border:none;outline:none;padding:16px 18px;font-family:var(--sans);font-size:16px;color:var(--slate);background:transparent;min-width:0}
-.search-input::placeholder{color:var(--soft)}
-.search-btn{background:var(--coral);color:#fff;border:none;padding:0 22px;font-family:var(--sans);font-size:14px;font-weight:500;cursor:pointer;transition:background .15s;white-space:nowrap;flex-shrink:0}
-.search-btn:hover{background:var(--coral2)}
-.search-btn:disabled{opacity:.6;cursor:not-allowed}
-.search-hint{text-align:center;font-family:var(--mono);font-size:11px;color:var(--soft);margin-bottom:14px}
-.chips{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;margin-bottom:0}
-.chip{font-family:var(--mono);font-size:11px;padding:5px 12px;border-radius:100px;cursor:pointer;border:1px solid var(--line2);background:var(--cream2);color:var(--mid);transition:all .15s}
-.chip:hover{border-color:var(--coral);color:var(--coral);background:var(--coral-bg)}
+  .search { display: flex; gap: 8px; margin-bottom: 24px; }
+  .search input {
+    flex: 1; background: var(--panel); border: 1px solid var(--border); color: var(--text);
+    padding: 14px 16px; border-radius: 10px; font-size: 16px; outline: none;
+    transition: border-color 150ms ease;
+  }
+  .search input:focus { border-color: var(--accent); }
+  .search button {
+    background: var(--accent); color: white; border: 0; padding: 14px 22px;
+    border-radius: 10px; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: transform 120ms ease, box-shadow 120ms ease;
+  }
+  .search button:hover { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(79,143,255,0.3); }
+  .search button:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* ── RESULT AREA ── */
-.result-area{max-width:700px;margin:0 auto;padding:0 24px 60px}
-.result-area.hidden{display:none}
+  .suggestions { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; margin-top: -16px; margin-bottom: 24px; overflow: hidden; display: none; }
+  .suggestions.open { display: block; }
+  .suggestion { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 14px; }
+  .suggestion:last-child { border-bottom: 0; }
+  .suggestion:hover { background: var(--panel-2); }
+  .suggestion .hint { color: var(--text-faint); font-size: 12px; margin-top: 2px; }
 
-/* ── LOADING ── */
-.loading-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:40px 24px;text-align:center}
-.spinner{width:32px;height:32px;border:3px solid var(--cream3);border-top-color:var(--coral);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 14px}
-@keyframes spin{to{transform:rotate(360deg)}}
-.loading-co{font-family:var(--serif);font-size:20px;color:var(--slate);margin-bottom:10px}
-.loading-steps{display:flex;flex-direction:column;gap:5px;margin-top:10px}
-.loading-step{font-family:var(--mono);font-size:11px;color:var(--soft);opacity:0;animation:fadeIn .3s forwards}
-@keyframes fadeIn{to{opacity:1}}
+  .loading { color: var(--text-dim); font-size: 14px; margin: 24px 0; display: none; }
+  .loading.show { display: block; }
+  .spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; animation: spin 600ms linear infinite; vertical-align: -2px; margin-right: 8px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
 
-/* ── RESOLVE STRIP ── */
-.resolve-strip{background:#fff;border:1px solid var(--line2);border-radius:12px;overflow:hidden;margin-bottom:8px}
-.resolve-header{padding:11px 18px;background:var(--cream);border-bottom:1px solid var(--line);font-family:var(--mono);font-size:11px;color:var(--mid)}
-.resolve-match{padding:13px 18px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line);gap:10px}
-.resolve-match:last-of-type{border-bottom:none}
-.rm-left{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
-.rm-ticker{font-family:var(--mono);font-size:11px;font-weight:600;padding:3px 7px;border-radius:4px;white-space:nowrap}
-.rm-ticker.public{border:1px solid rgba(45,122,95,.2);color:var(--sage);background:var(--sage-bg)}
-.rm-ticker.private{border:1px solid rgba(193,127,59,.2);color:var(--amber);background:var(--amber-bg)}
-.rm-ticker.index,.rm-ticker.unknown{border:1px solid var(--line2);color:var(--mid);background:var(--cream2)}
-.rm-name{font-size:13px;font-weight:500;color:var(--slate);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.rm-desc{font-family:var(--mono);font-size:10px;color:var(--mid);margin-top:1px}
-.rm-action{flex-shrink:0}
-.resolve-footer{padding:9px 18px;display:flex;align-items:center;justify-content:space-between;background:var(--cream);font-family:var(--mono);font-size:10px;color:var(--mid)}
-.resolve-footer a{color:var(--mid);cursor:pointer;text-decoration:underline}
+  .result { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 28px; margin-top: 24px; display: none; }
+  .result.show { display: block; }
 
-/* ── RESULT CARD ── */
-.result-card{background:#fff;border:1px solid var(--line2);border-radius:14px;overflow:hidden;box-shadow:0 2px 16px rgba(28,43,58,.05)}
-.rc-header{padding:14px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between}
-.rc-co{display:flex;align-items:center;gap:10px}
-.rc-name{font-weight:600;font-size:15px;color:var(--slate)}
-.rc-meta{font-family:var(--mono);font-size:10px;color:var(--mid);margin-top:1px}
-.rc-live{display:flex;align-items:center;gap:5px;font-family:var(--mono);font-size:10px;color:var(--sage)}
+  .state-badge {
+    display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 12px;
+    font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 14px;
+  }
+  .state-badge.CLEAR  { background: rgba(16,185,129,0.12); color: var(--green); }
+  .state-badge.WATCH  { background: rgba(79,143,255,0.14); color: var(--accent); }
+  .state-badge.LIKELY { background: rgba(245,158,11,0.14); color: var(--amber); }
+  .state-badge.ACTIVE { background: rgba(239,68,68,0.14); color: var(--red-soft); }
 
-/* STATE BADGE */
-.state-bar{padding:9px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.state-badge{display:inline-flex;align-items:center;gap:6px;padding:5px 12px;border-radius:6px;font-family:var(--mono);font-size:11px;font-weight:500;border:1px solid}
-.state-active{background:var(--coral-bg);color:var(--coral);border-color:rgba(217,79,61,.2)}
-.state-active-multi{background:#FDF1E8;color:#B85A2C;border-color:rgba(184,90,44,.25)}
-.state-continuation{background:var(--amber-bg);color:var(--amber);border-color:rgba(193,127,59,.2)}
-.state-watching{background:#EEF4FF;color:#3B6FD4;border-color:rgba(59,111,212,.2)}
-.state-clear{background:var(--sage-bg);color:var(--sage);border-color:rgba(45,122,95,.2)}
-.state-floor-notice{font-family:var(--mono);font-size:10px;color:var(--mid)}
-.state-floor-notice a{color:var(--coral);text-decoration:none}
+  .score-row { display: flex; align-items: baseline; gap: 16px; margin-bottom: 16px; }
+  .score-big { font-size: 56px; font-weight: 700; letter-spacing: -0.02em; line-height: 1; }
+  .score-max { color: var(--text-faint); font-size: 18px; }
+  .band { color: var(--text-dim); font-size: 14px; text-transform: uppercase; letter-spacing: 0.08em; }
 
-/* AWAITED BANNER */
-.awaited-banner{padding:9px 20px;display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px;border-bottom:1px solid var(--line)}
-.ab-amber{background:var(--amber-bg);color:var(--amber)}
-.ab-red{background:var(--coral-bg);color:var(--coral)}
+  .summary { color: var(--text); font-size: 15px; line-height: 1.6; margin: 16px 0 20px; }
+  .disclaimer { color: var(--text-faint); font-size: 13px; line-height: 1.5; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 20px; }
 
-/* SUMMARY */
-.summary-block{padding:14px 20px;font-size:13px;color:var(--slate2);line-height:1.7;background:var(--cream);border-bottom:1px solid var(--line);font-style:italic}
+  .signals h3 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-dim); margin: 20px 0 8px; }
+  .signal { padding: 10px 0; border-top: 1px solid var(--border); font-size: 14px; color: var(--text); }
+  .signal .src { color: var(--text-faint); font-size: 12px; margin-top: 2px; }
 
-/* ── v6.1 PROGRAMME CARD (light, distinct from bankruptcy) ── */
-.programme-card{background:var(--cream2);border-radius:10px;padding:16px 20px;margin:12px 20px;border-left:3px solid var(--coral)}
-.programme-label{font-family:var(--mono);font-size:10px;color:var(--mid);letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
-.programme-name{font-family:var(--serif);font-size:19px;color:var(--slate);margin-bottom:4px;line-height:1.2}
-.programme-meta{font-family:var(--mono);font-size:11px;color:var(--mid)}
-.programme-progress{margin-top:10px;background:var(--cream3);border-radius:100px;height:6px;overflow:hidden}
-.programme-progress-fill{height:100%;background:var(--coral);border-radius:100px;transition:width .4s ease}
-.programme-evidence{margin-top:10px;font-size:12px;color:var(--slate2);font-style:italic;line-height:1.5;padding-left:10px;border-left:2px solid var(--line2)}
+  footer { margin-top: 80px; color: var(--text-faint); font-size: 13px; display: flex; justify-content: space-between; border-top: 1px solid var(--border); padding-top: 24px; }
+  footer a { color: var(--text-dim); margin-left: 16px; }
 
-/* ── v6.1 HEADCOUNT CARD ── */
-.headcount-card{background:var(--cream);border:1px solid var(--line);border-radius:10px;padding:14px 20px;margin:0 20px 12px 20px}
-.headcount-label{font-family:var(--mono);font-size:10px;color:var(--mid);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px}
-.headcount-num{font-family:var(--serif);font-size:22px;color:var(--slate);line-height:1.1}
-.headcount-num .headcount-pct{font-family:var(--mono);font-size:12px;color:var(--mid);margin-left:8px}
-.headcount-basis{font-family:var(--mono);font-size:10px;color:var(--mid);margin-top:5px;line-height:1.5}
-
-/* ── v6.1 FUNCTION-RISK GRID ── */
-.fn-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:0 20px 12px 20px}
-.fn-col{background:var(--cream);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
-.fn-col.at-risk{border-left:3px solid var(--coral)}
-.fn-col.protected{border-left:3px solid var(--sage)}
-.fn-col-label{font-family:var(--mono);font-size:10px;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
-.fn-col.at-risk .fn-col-label{color:var(--coral)}
-.fn-col.protected .fn-col-label{color:var(--sage)}
-.fn-item{font-size:12px;color:var(--slate);margin-bottom:6px;line-height:1.4}
-.fn-item:last-child{margin-bottom:0}
-.fn-item-fn{font-weight:500;color:var(--slate)}
-.fn-item-conf{font-family:var(--mono);font-size:9px;color:var(--mid);margin-left:6px;text-transform:uppercase;letter-spacing:.5px}
-.fn-item-ev{font-family:var(--mono);font-size:10px;color:var(--mid);line-height:1.5;margin-top:2px;font-style:italic}
-.fn-empty{font-size:11px;color:var(--soft);font-style:italic}
-
-/* ── v6.1 BANKRUPTCY BANNER (slate — distinct from voluntary restructuring) ── */
-.bankruptcy-card{background:#1f2933;color:#f5f1ea;border-radius:10px;padding:20px 24px;margin:12px 20px;border-left:4px solid #8b95a3;position:relative;overflow:hidden}
-.bankruptcy-card::before{content:'⚖';position:absolute;top:18px;right:22px;font-size:26px;opacity:.35}
-.bankruptcy-label{font-family:var(--mono);font-size:10px;color:#8b95a3;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:6px}
-.bankruptcy-title{font-family:var(--serif);font-size:22px;font-weight:500;margin-bottom:4px;letter-spacing:-.2px}
-.bankruptcy-meta{font-family:var(--mono);font-size:11px;color:#aab4c2;margin-bottom:12px}
-.bankruptcy-desc{font-size:13px;color:#e8e4dc;line-height:1.55;margin-bottom:10px}
-.bankruptcy-quote{font-size:12px;font-style:italic;color:#c8cfdb;padding:9px 12px;background:rgba(255,255,255,.04);border-left:2px solid #4a5663;border-radius:0 3px 3px 0;margin-bottom:10px}
-.bankruptcy-tags{display:flex;gap:6px;flex-wrap:wrap;padding-top:10px;border-top:1px solid #34404d}
-.bankruptcy-tag{font-family:var(--mono);font-size:10px;letter-spacing:.5px;padding:4px 9px;border-radius:3px;background:rgba(255,255,255,.08);color:#d8dde6}
-.bankruptcy-tag.dip{background:rgba(200,152,50,.2);color:#e8c87a}
-
-/* ── v6.1 LARGE EMPLOYER NOTE ── */
-.large-employer-note{margin:0 20px 12px 20px;padding:10px 14px;background:var(--amber-bg);border:1px solid rgba(193,127,59,.2);border-radius:8px;font-family:var(--mono);font-size:11px;color:var(--amber);line-height:1.5}
-
-/* SCORE BODY */
-.rc-body{display:grid;grid-template-columns:140px 1fr}
-.rc-gauge-col{padding:20px 16px;border-right:1px solid var(--line);display:flex;flex-direction:column;align-items:center;gap:8px}
-.gauge{width:110px;height:110px;position:relative}
-.gauge svg{width:100%;height:100%;transform:rotate(-90deg)}
-.g-track{fill:none;stroke:var(--cream3);stroke-width:9}
-.g-fill{fill:none;stroke-width:9;stroke-linecap:round;stroke-dasharray:339}
-.g-center{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
-.g-num{font-family:var(--serif);font-size:30px;line-height:1}
-.g-approx{font-family:var(--mono);font-size:11px;color:var(--mid)}
-.g-sub{font-family:var(--mono);font-size:10px;color:var(--mid)}
-.risk-tag{display:inline-flex;align-items:center;gap:4px;border-radius:5px;padding:4px 10px;font-family:var(--mono);font-size:11px;font-weight:500;border:1px solid}
-.risk-high{background:var(--coral-bg);color:var(--coral);border-color:rgba(217,79,61,.2)}
-.risk-medium{background:var(--amber-bg);color:var(--amber);border-color:rgba(193,127,59,.2)}
-.risk-low{background:var(--sage-bg);color:var(--sage);border-color:rgba(45,122,95,.2)}
-.g-disc{font-family:var(--mono);font-size:9px;color:var(--soft);text-align:center;line-height:1.5;max-width:120px}
-
-/* SIGNALS */
-.rc-signals-col{padding:16px 18px}
-.sig-title{font-family:var(--mono);font-size:10px;color:var(--soft);letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
-.sig-list{display:flex;flex-direction:column;gap:5px}
-.sig-row{display:flex;align-items:flex-start;gap:8px;padding:8px 10px;background:var(--cream);border:1px solid var(--line);border-radius:7px}
-.sig-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0;margin-top:4px}
-.sd-sec{background:var(--coral)}.sd-media{background:var(--amber)}.sd-nlp{background:#7C5CBF}.sd-other{background:var(--mid)}
-.sig-text{flex:1;min-width:0}
-.sig-name{font-size:12px;font-weight:500;color:var(--slate);line-height:1.4}
-.sig-src{font-family:var(--mono);font-size:10px;color:var(--mid);margin-top:1px}
-.sig-pts{font-family:var(--mono);font-size:11px;font-weight:500;flex-shrink:0;color:var(--coral)}
-.sig-none{font-family:var(--mono);font-size:12px;color:var(--mid);text-align:center;padding:14px;background:var(--cream2);border-radius:7px}
-.gate-strip{margin-top:8px;padding:10px 12px;background:var(--coral-bg);border:1px solid rgba(217,79,61,.15);border-radius:7px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.gate-text{flex:1;font-size:12px;color:var(--mid);min-width:140px}
-.private-notice{margin-top:8px;padding:9px 12px;background:var(--amber-bg);border:1px solid rgba(193,127,59,.2);border-radius:7px;font-family:var(--mono);font-size:11px;color:var(--amber);line-height:1.5}
-.confirmed-strip{margin-top:8px;background:var(--sage-bg);border:1px solid rgba(45,122,95,.18);border-radius:7px;padding:9px 12px;display:flex;align-items:flex-start;gap:8px}
-.conf-dot{width:6px;height:6px;background:var(--sage);border-radius:50%;flex-shrink:0;margin-top:4px}
-.conf-text{font-size:12px;color:var(--slate2);line-height:1.5;flex:1}
-.conf-badge{font-family:var(--mono);font-size:9px;color:var(--sage);background:#fff;border:1px solid rgba(45,122,95,.2);border-radius:3px;padding:2px 5px;white-space:nowrap}
-
-/* TREND CHART */
-.sparkline-block{padding:14px 20px;border-top:1px solid var(--line)}
-.sl-title{font-family:var(--mono);font-size:10px;color:var(--soft);letter-spacing:1px;text-transform:uppercase;margin-bottom:10px}
-.sl-chart-wrap{width:100%;overflow-x:auto}
-.sl-svg{overflow:visible}
-.sl-empty{font-family:var(--mono);font-size:11px;color:var(--soft);font-style:italic}
-
-/* DISCLAIMER */
-.result-disc{font-family:var(--mono);font-size:10px;color:var(--soft);padding:12px 4px;line-height:1.6}
-
-/* ERROR / STATUS CARDS */
-.msg-card{background:#fff;border:1px solid var(--line2);border-radius:14px;padding:32px 24px;text-align:center}
-.msg-icon{font-size:28px;margin-bottom:10px}
-.msg-title{font-family:var(--serif);font-size:20px;color:var(--slate);margin-bottom:6px}
-.msg-sub{font-family:var(--mono);font-size:12px;color:var(--mid);line-height:1.65;max-width:360px;margin:0 auto 16px}
-
-/* SIGN IN MODAL */
-.modal-overlay{position:fixed;inset:0;background:rgba(28,43,58,.5);backdrop-filter:blur(4px);z-index:1000;display:flex;align-items:center;justify-content:center;opacity:0;pointer-events:none;transition:opacity .2s;padding:20px}
-.modal-overlay.open{opacity:1;pointer-events:all}
-.modal{background:#fff;border-radius:16px;padding:32px 28px;width:100%;max-width:400px;position:relative;transform:translateY(10px);transition:transform .2s}
-.modal-overlay.open .modal{transform:translateY(0)}
-.modal-close{position:absolute;top:14px;right:16px;background:none;border:none;font-size:20px;color:var(--mid);cursor:pointer}
-.modal-logo{font-family:var(--serif);font-size:19px;color:var(--slate);margin-bottom:4px}
-.modal-sub{font-family:var(--mono);font-size:11px;color:var(--mid);margin-bottom:20px;line-height:1.6}
-.modal-benefits{display:flex;flex-direction:column;gap:7px;margin-bottom:20px;padding:14px;background:var(--cream);border-radius:10px}
-.modal-benefit{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--slate)}
-.modal-label{font-family:var(--mono);font-size:11px;color:var(--mid);text-transform:uppercase;margin-bottom:7px}
-.modal-error{font-family:var(--mono);font-size:11px;color:var(--coral);margin-bottom:8px;padding:8px 12px;background:var(--coral-bg);border-radius:6px}
-.modal-input{width:100%;background:var(--cream);border:1px solid var(--line2);border-radius:8px;padding:12px 15px;font-family:var(--sans);font-size:15px;color:var(--slate);outline:none;margin-bottom:10px;display:block;transition:border-color .15s}
-.modal-input:focus{border-color:rgba(217,79,61,.4);background:#fff}
-.modal-btn{width:100%;background:var(--coral);color:#fff;font-family:var(--sans);font-size:14px;font-weight:500;padding:12px;border:none;border-radius:8px;cursor:pointer;margin-bottom:10px}
-.modal-btn:disabled{opacity:.6;cursor:not-allowed}
-.modal-disc{font-family:var(--mono);font-size:10px;color:var(--soft);text-align:center;line-height:1.6}
-.modal-success{text-align:center;padding:8px 0}
-.modal-success-icon{font-size:36px;margin-bottom:10px}
-.modal-success-title{font-family:var(--serif);font-size:19px;color:var(--slate);margin-bottom:8px}
-.modal-success-sub{font-family:var(--mono);font-size:11px;color:var(--mid);line-height:1.7}
-
-/* BOTTOM STRIP */
-.bottom-strip{border-top:1px solid var(--line);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:#fff}
-.bs-left{font-family:var(--mono);font-size:11px;color:var(--soft)}
-.bs-right{display:flex;gap:16px;flex-wrap:wrap}
-.bs-right a{font-size:12px;color:var(--mid);text-decoration:none}
-.bs-right a:hover{color:var(--slate)}
-.bs-ent{color:var(--coral)!important;font-weight:500}
-
-/* HOW IT WORKS PAGE */
-.how-page{display:none;max-width:700px;margin:0 auto;padding:40px 24px 60px}
-.how-page.active{display:block}
-.how-h2{font-family:var(--serif);font-size:clamp(28px,4vw,40px);color:var(--slate);margin-bottom:8px;font-weight:400}
-.how-sub{font-size:15px;color:var(--mid);margin-bottom:36px;line-height:1.65}
-.how-step{display:flex;gap:16px;margin-bottom:28px;align-items:flex-start}
-.how-num{font-family:var(--mono);font-size:11px;color:var(--coral);background:var(--coral-bg);border:1px solid rgba(217,79,61,.15);border-radius:5px;padding:4px 8px;flex-shrink:0;margin-top:2px}
-.how-body h3{font-family:var(--serif);font-size:18px;color:var(--slate);margin-bottom:4px;font-weight:400}
-.how-body p{font-size:14px;color:var(--mid);line-height:1.7}
-.how-divider{border:none;border-top:1px solid var(--line);margin:32px 0}
-.how-table{width:100%;border-collapse:collapse;margin-bottom:24px;font-size:13px}
-.how-table th{text-align:left;padding:8px 12px;font-family:var(--mono);font-size:10px;color:var(--mid);text-transform:uppercase;border-bottom:2px solid var(--line2)}
-.how-table td{padding:9px 12px;border-bottom:1px solid var(--line);color:var(--slate);vertical-align:top}
-.how-table tr:last-child td{border-bottom:none}
-.how-back{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:12px;color:var(--mid);cursor:pointer;margin-bottom:24px;background:none;border:none;padding:0}
-.how-back:hover{color:var(--slate)}
-.tier-a{color:var(--coral);font-weight:600}
-.tier-b{color:var(--amber);font-weight:600}
-.tier-exc{color:var(--soft)}
-
-/* ── MOBILE ── */
-@media(max-width:600px){
-  .nav{padding:12px 16px}
-  .logo{font-size:18px}
-  .hero{padding:36px 16px 24px}
-  h1{font-size:32px}
-  .hero-sub{font-size:15px}
-  .search-input{font-size:15px;padding:14px 14px}
-  .search-btn{padding:0 16px;font-size:13px}
-  .result-area{padding:0 16px 40px}
-  .rc-body{grid-template-columns:1fr}
-  .rc-gauge-col{border-right:none;border-bottom:1px solid var(--line);flex-direction:row;justify-content:flex-start;gap:16px;padding:14px 16px}
-  .gauge{width:80px;height:80px}
-  .g-num{font-size:24px}
-  .rc-signals-col{padding:14px 16px}
-  .state-bar{padding:8px 16px}
-  .summary-block{padding:12px 16px}
-  .rc-header{padding:12px 16px}
-  .sparkline-block{padding:12px 16px}
-  .bottom-strip{padding:12px 16px}
-  .proof-strip{display:none}
-  .how-page{padding:24px 16px 40px}
-  .fn-grid{grid-template-columns:1fr}
-  .programme-card,.headcount-card,.bankruptcy-card,.fn-grid,.large-employer-note{margin-left:16px;margin-right:16px}
-}
-@media(max-width:380px){
-  h1{font-size:28px}
-  .search-btn{padding:0 12px}
-}
-
-/* ── LANDINGZONE (post-result) ── */
-.lz-section{margin-top:20px;padding-top:20px;border-top:1px solid var(--line)}
-.lz-intro{margin-bottom:16px}
-.lz-intro h3{font-family:var(--serif);font-size:22px;color:var(--slate);margin-bottom:4px;font-weight:400}
-.lz-intro p{font-size:13px;color:var(--mid);line-height:1.6}
-.lz-filters{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;align-items:flex-end}
-.lz-filter-group{display:flex;flex-direction:column;gap:5px}
-.lz-filter-label{font-family:var(--mono);font-size:10px;color:var(--mid);text-transform:uppercase;letter-spacing:.5px}
-.lz-select{background:#fff;border:1px solid var(--line2);border-radius:8px;padding:9px 12px;font-family:var(--sans);font-size:13px;color:var(--slate);outline:none;cursor:pointer;min-width:160px}
-.lz-select:focus{border-color:rgba(217,79,61,.35)}
-.lz-loc-wrap{display:flex;gap:5px;flex-wrap:wrap;max-width:420px}
-.lz-loc-btn{font-family:var(--mono);font-size:11px;padding:5px 10px;border-radius:100px;cursor:pointer;border:1px solid var(--line2);background:#fff;color:var(--mid);transition:all .15s;white-space:nowrap}
-.lz-loc-btn.sel{border-color:var(--coral);background:var(--coral-bg);color:var(--coral)}
-.lz-search-btn{background:var(--coral);color:#fff;font-family:var(--sans);font-size:13px;font-weight:500;padding:9px 18px;border:none;border-radius:8px;cursor:pointer;white-space:nowrap;transition:background .15s}
-.lz-search-btn:hover{background:var(--coral2)}
-.lz-search-btn:disabled{opacity:.6;cursor:not-allowed}
-.lz-loading{font-family:var(--mono);font-size:12px;color:var(--mid);padding:24px 0;text-align:center}
-.lz-empty{font-family:var(--mono);font-size:12px;color:var(--mid);padding:24px 0;text-align:center;line-height:1.7}
-.lz-stats{font-family:var(--mono);font-size:11px;color:var(--mid);margin-bottom:12px}
-.lz-stats strong{color:var(--slate)}
-.lz-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.lz-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px;transition:all .15s}
-.lz-card:hover{border-color:var(--line2);box-shadow:0 2px 10px rgba(28,43,58,.06)}
-.lz-card.risk-flag{border-color:rgba(217,79,61,.2);background:#FFFAF9}
-.lz-cname{font-weight:600;font-size:13px;color:var(--slate);margin-bottom:2px}
-.lz-roles{font-family:var(--mono);font-size:10px;color:var(--mid);margin-bottom:8px}
-.lz-trend{display:inline-flex;align-items:center;font-family:var(--mono);font-size:10px;padding:2px 7px;border-radius:100px;margin-bottom:8px}
-.tr-surging{background:var(--sage-bg);color:var(--sage);border:1px solid rgba(45,122,95,.2)}
-.tr-growing{background:#EEF4FF;color:#3B6FD4;border:1px solid rgba(59,111,212,.15)}
-.tr-stable{background:var(--cream2);color:var(--mid);border:1px solid var(--line)}
-.tr-cooling{background:var(--amber-bg);color:var(--amber);border:1px solid rgba(193,127,59,.2)}
-.lz-locs{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
-.lz-loc-row{display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--slate2)}
-.lz-loc-count{font-family:var(--mono);font-size:10px;color:var(--mid)}
-.lz-risk-ref{font-family:var(--mono);font-size:10px;color:var(--coral);background:var(--coral-bg);border:1px solid rgba(217,79,61,.15);border-radius:4px;padding:4px 7px;line-height:1.4;margin-top:4px}
-.lz-risk-med{color:var(--amber);background:var(--amber-bg);border-color:rgba(193,127,59,.2)}
-@media(max-width:600px){
-  .lz-grid{grid-template-columns:1fr}
-  .lz-filters{flex-direction:column}
-  .lz-select{min-width:100%}
-}
-
-/* ── EMAIL CAPTURE (inline, post-result) ── */
-.capture-strip{background:linear-gradient(135deg,#1C2B3A 0%,#2D3F52 100%);border-radius:12px;padding:20px 24px;margin-top:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap}
-.capture-left{flex:1;min-width:180px}
-.capture-icon{font-size:20px;margin-bottom:4px}
-.capture-title{font-family:var(--serif);font-size:17px;color:#fff;margin-bottom:2px;font-weight:400}
-.capture-sub{font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.5);line-height:1.5}
-.capture-form{display:flex;gap:0;min-width:220px;flex:1;max-width:340px}
-.capture-input{flex:1;border:none;outline:none;padding:11px 14px;font-family:var(--sans);font-size:14px;color:var(--slate);background:#fff;border-radius:8px 0 0 8px;min-width:0}
-.capture-input::placeholder{color:var(--soft)}
-.capture-btn{background:var(--coral);color:#fff;border:none;padding:11px 16px;font-family:var(--sans);font-size:13px;font-weight:500;cursor:pointer;border-radius:0 8px 8px 0;white-space:nowrap;transition:background .15s}
-.capture-btn:hover{background:var(--coral2)}
-.capture-btn:disabled{opacity:.6;cursor:not-allowed}
-.capture-done{font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.7);padding:8px 0}
-.capture-skip{font-family:var(--mono);font-size:10px;color:rgba(255,255,255,.3);cursor:pointer;margin-top:6px;display:block;text-align:right;text-decoration:underline}
-.capture-skip:hover{color:rgba(255,255,255,.5)}
-
-/* ── LOADING PROGRESS BAR ── */
-.loading-bar-wrap{width:100%;background:var(--cream3);border-radius:100px;height:3px;margin:16px 0 6px;overflow:hidden}
-.loading-bar-inner{height:100%;background:var(--coral);border-radius:100px;width:0%;transition:width .6s ease}
-.loading-time{font-family:var(--mono);font-size:10px;color:var(--soft);margin-top:4px}
-
-/* ── COLLAPSIBLE SIGNALS (mobile) ── */
-.sig-toggle{display:none;width:100%;background:none;border:1px solid var(--line);border-radius:7px;padding:9px;font-family:var(--mono);font-size:11px;color:var(--mid);cursor:pointer;margin-top:6px;text-align:center;transition:all .15s}
-.sig-toggle:hover{border-color:var(--coral);color:var(--coral)}
-.sig-list.collapsed .sig-row:nth-child(n+3){display:none}
-@media(max-width:600px){
-  .sig-toggle{display:block}
-  .capture-strip{flex-direction:column;gap:12px}
-  .capture-form{max-width:100%;width:100%}
-}
+  .placeholder-note { background: rgba(79,143,255,0.08); border: 1px solid rgba(79,143,255,0.25); color: var(--text-dim); padding: 12px 16px; border-radius: 8px; font-size: 13px; margin-bottom: 24px; }
 </style>
 </head>
 <body>
+<div class="wrap">
+  <header>
+    <div class="brand">Eject<span>Seat</span></div>
+    <nav>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/terms.html">Terms</a>
+    </nav>
+  </header>
 
-<!-- SIGN IN MODAL -->
-<div class="modal-overlay" id="signInModal" onclick="handleModalOverlayClick(event)">
-  <div class="modal">
-    <button class="modal-close" onclick="closeSignIn()">×</button>
-    <div id="modalContent">
-      <div class="modal-logo">🪂 EjectSeat</div>
-      <div class="modal-sub">Sign in free — no password, no credit card.<br>One-click magic link to your inbox.</div>
-      <div class="modal-benefits">
-        <div class="modal-benefit"><span>📊</span> Watchlist — track companies you care about</div>
-        <div class="modal-benefit"><span>⚡</span> Score change alerts (coming soon)</div>
-        <div class="modal-benefit"><span>📈</span> Full 4-quarter signal history</div>
-      </div>
-      <div class="modal-label">Your email</div>
-      <div id="modalError" class="modal-error" style="display:none"></div>
-      <input class="modal-input" type="email" id="signInEmail" placeholder="you@company.com" autocomplete="email">
-      <button class="modal-btn" id="signInBtn" onclick="submitSignIn()">Send magic link →</button>
-      <div class="modal-disc">Free forever. No credit card.</div>
+  <div class="placeholder-note">
+    v7 backend pipeline is live. The full UI rebuild (motion system, LandingZone auto-load, inline CTAs) ships in the next release.
+  </div>
+
+  <h1>Is your company heading for layoffs?</h1>
+  <p class="lede">Search any US-listed public company. EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media, then produces a forward-looking risk score.</p>
+
+  <div class="search">
+    <input id="q" type="text" placeholder="Company name or ticker (e.g. Snap, AAPL, Marsh &amp; McLennan)" autocomplete="off" />
+    <button id="go">Score</button>
+  </div>
+  <div class="suggestions" id="suggestions"></div>
+
+  <div class="loading" id="loading"><span class="spinner"></span>Reading filings, transcripts, and recent coverage…</div>
+
+  <div class="result" id="result"></div>
+
+  <footer>
+    <div>© Admin-Ace LLC</div>
+    <div>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/terms.html">Terms</a>
     </div>
-  </div>
-</div>
-
-<!-- NAV -->
-<nav class="nav">
-  <a href="/" class="logo" onclick="showHome(event)">
-    <div class="logo-dot"></div>EjectSeat
-  </a>
-  <div class="nav-right">
-    <a class="nav-link" href="#" onclick="showHow(event)">How it works</a>
-    <a class="nav-enterprise" href="https://intelligence.ejectseat.io" target="_blank">For institutions →</a>
-  </div>
-</nav>
-
-<!-- HOME PAGE -->
-<div id="homePage">
-  <!-- HERO -->
-  <div class="hero">
-    <div class="hero-badge"><div class="logo-dot"></div> Live · SEC EDGAR · Verified sources only</div>
-    <h1>Is your company<br>about to <em>cut jobs?</em></h1>
-    <p class="hero-sub">Get a layoff risk score for any company in 30 seconds — based on SEC filings and verified news. Know before the all-hands meeting.</p>
-
-    <!-- SEARCH -->
-    <div class="search-wrap">
-      <div class="search-row">
-        <input class="search-input" type="text" id="heroInput" placeholder="Try Marsh McLennan, Snap, Novo Nordisk…" autocomplete="off" aria-label="Search company">
-        <button class="search-btn" id="searchBtn" onclick="runSearch()">Score →</button>
-      </div>
-    </div>
-    <div class="search-hint">Free · No signup · Any US-listed company or FPI</div>
-    <div class="chips" id="recentChips">
-      <span class="chip" onclick="quickSearch('Marsh McLennan')">Marsh McLennan</span>
-      <span class="chip" onclick="quickSearch('Snap')">Snap</span>
-      <span class="chip" onclick="quickSearch('Intel')">Intel</span>
-      <span class="chip" onclick="quickSearch('Salesforce')">Salesforce</span>
-      <span class="chip" onclick="quickSearch('Novo Nordisk')">Novo Nordisk</span>
-    </div>
-  </div>
-
-  <!-- RESULT AREA -->
-  <div class="result-area hidden" id="resultSection">
-    <div id="resultContainer"></div>
-  </div>
-
-<!-- LANDINGZONE — appears after score result -->
-<div class="result-area hidden" id="lzSection">
-  <div class="lz-section">
-    <div class="lz-intro">
-      <h3>While you watch — find your next move.</h3>
-      <p>Companies actively hiring right now. Select your role and up to 5 locations.</p>
-    </div>
-    <div class="lz-filters">
-      <div class="lz-filter-group">
-        <div class="lz-filter-label">Role</div>
-        <select class="lz-select" id="lzRole">
-          <option value="all">All roles</option>
-          <option value="engineering">Engineering & Tech</option>
-          <option value="product">Product Management</option>
-          <option value="trust_safety">Trust & Safety / Policy</option>
-          <option value="data">Data & Analytics</option>
-          <option value="design">Design & UX</option>
-          <option value="sales">Sales & BD</option>
-          <option value="finance">Finance & Accounting</option>
-          <option value="hr">People & HR</option>
-          <option value="marketing">Marketing & Comms</option>
-          <option value="legal">Legal & Compliance</option>
-        </select>
-      </div>
-      <div class="lz-filter-group">
-        <div class="lz-filter-label">Locations (up to 5)</div>
-        <div class="lz-loc-wrap">
-          <button class="lz-loc-btn sel" data-loc="us" onclick="toggleLzLoc(this)">🇺🇸 US</button>
-          <button class="lz-loc-btn sel" data-loc="remote" onclick="toggleLzLoc(this)">🌐 Remote</button>
-          <button class="lz-loc-btn" data-loc="gb" onclick="toggleLzLoc(this)">🇬🇧 UK</button>
-          <button class="lz-loc-btn" data-loc="sg" onclick="toggleLzLoc(this)">🇸🇬 SG</button>
-          <button class="lz-loc-btn" data-loc="in" onclick="toggleLzLoc(this)">🇮🇳 India</button>
-          <button class="lz-loc-btn" data-loc="au" onclick="toggleLzLoc(this)">🇦🇺 AU</button>
-          <button class="lz-loc-btn" data-loc="ca" onclick="toggleLzLoc(this)">🇨🇦 CA</button>
-          <button class="lz-loc-btn" data-loc="de" onclick="toggleLzLoc(this)">🇩🇪 DE</button>
-          <button class="lz-loc-btn" data-loc="sea" onclick="toggleLzLoc(this)">🌏 SEA</button>
-          <button class="lz-loc-btn" data-loc="europe" onclick="toggleLzLoc(this)">🌍 Europe</button>
-        </div>
-      </div>
-      <button class="lz-search-btn" id="lzSearchBtn" onclick="loadLandingZone()">Search →</button>
-    </div>
-    <div id="lzContainer"></div>
-  </div>
-</div>
-
-
-  <!-- PROOF STRIP -->
-  <div class="proof-strip" style="border-top:1px solid var(--line);border-bottom:1px solid var(--line);padding:12px 24px;display:flex;justify-content:center;gap:32px;flex-wrap:wrap;background:var(--cream2);margin-top:16px">
-    <span style="font-family:var(--mono);font-size:11px;color:var(--mid)">🔒 <strong style="color:var(--slate)">Zero</strong> Reddit · Blind · social media</span>
-    <span style="font-family:var(--mono);font-size:11px;color:var(--mid)">📋 <strong style="color:var(--slate)">SEC EDGAR</strong> filings only</span>
-    <span style="font-family:var(--mono);font-size:11px;color:var(--mid)">📰 <strong style="color:var(--slate)">Reuters · Bloomberg · FT</strong> verified</span>
-  </div>
-</div>
-
-<!-- HOW IT WORKS PAGE -->
-<div class="how-page" id="howPage">
-  <button class="how-back" onclick="showHome(event)">← Back to search</button>
-  <h2 class="how-h2">How EjectSeat works</h2>
-  <p class="how-sub">A real-time risk score for any US-listed public company or Foreign Private Issuer — built only from public, named sources.</p>
-
-  <div class="how-step">
-    <div class="how-num">01</div>
-    <div class="how-body">
-      <h3>Public filings, in real time</h3>
-      <p>We continuously read SEC EDGAR — the official US securities filings repository — alongside named editorial sources from major publications. Every score is generated on demand from the most recent available data.</p>
-    </div>
-  </div>
-
-  <div class="how-step">
-    <div class="how-num">02</div>
-    <div class="how-body">
-      <h3>Proprietary intelligence layer</h3>
-      <p>Our analysis stack classifies each company's current state, extracts structured intelligence about restructuring activity where present, and weighs corroborating signals across filings and verified press coverage. The output is a single 0–100 score with supporting context.</p>
-    </div>
-  </div>
-
-  <div class="how-step">
-    <div class="how-num">03</div>
-    <div class="how-body">
-      <h3>What we exclude</h3>
-      <p>Reddit. Blind. LinkedIn. X / Twitter. Glassdoor. Anonymous tips. None of these contribute to any EjectSeat score. We only weight named, accountable sources — that's what makes the score defensible.</p>
-    </div>
-  </div>
-
-  <hr class="how-divider">
-  <h3 style="font-family:var(--serif);font-size:20px;color:var(--slate);margin-bottom:16px;font-weight:400">What the score means</h3>
-  <table class="how-table">
-    <tr><th>Score</th><th>Band</th><th>What it means</th></tr>
-    <tr><td>65 – 100</td><td class="tier-a">HIGH</td><td>Strong signals in SEC filings and/or confirmed media. Monitor actively.</td></tr>
-    <tr><td>40 – 64</td><td class="tier-b">MEDIUM</td><td>Precursor signals present. No confirmed announcement yet.</td></tr>
-    <tr><td>0 – 39</td><td style="color:var(--sage);font-weight:600">LOW</td><td>No significant signals in current filings or named editorial sources.</td></tr>
-  </table>
-
-  <p style="font-family:var(--mono);font-size:11px;color:var(--soft);line-height:1.65;margin-top:16px">EjectSeat scores are predictive signals based on public data — not confirmed outcomes. Scores do not guarantee layoffs will or will not occur. US-listed public companies and Foreign Private Issuers only. Private companies and market indexes are not scored.</p>
-</div>
-
-<!-- BOTTOM STRIP -->
-<div class="bottom-strip">
-  <div class="bs-left">© 2026 EjectSeat · Predictive signal, not financial advice</div>
-  <div class="bs-right">
-    <a href="#" onclick="showHow(event)">How it works</a>
-    <a href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-    <a class="bs-ent" href="https://intelligence.ejectseat.io" target="_blank">For institutions →</a>
-  </div>
+  </footer>
 </div>
 
 <script>
-// ── Utilities ──────────────────────────────────────────────────────────────
-function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;')}
-function getSession(){let s=document.cookie.split(';').map(c=>c.trim()).find(c=>c.startsWith('es_session='));if(s)return s.split('=')[1];const id=crypto.randomUUID();document.cookie=`es_session=${id};max-age=${60*60*24*365};path=/;SameSite=Lax`;return id}
-function scoreOffset(score){return Math.round(339-(score/100)*339)}
-function bandStyle(band){
-  if(band==='HIGH')   return{cls:'risk-high',  color:'#D94F3D',label:'⚠ HIGH'};
-  if(band==='MEDIUM') return{cls:'risk-medium',color:'#C17F3B',label:'~ MEDIUM'};
-  return{cls:'risk-low',color:'#2D7A5F',label:'✓ LOW'};
-}
-function sigDot(tier){
-  if(tier==='sec') return 'sd-sec';
-  if(tier==='tier_a'||tier==='tier_b'||tier==='tier_c') return 'sd-media';
-  return 'sd-nlp';
-}
-function stateConfig(state){
-  const m={
-    ACTIVE:            {cls:'state-active',      icon:'🔴',label:'ACTIVE — Confirmed layoffs in progress'},
-    ACTIVE_MULTI_YEAR: {cls:'state-active-multi',icon:'🔶',label:'ACTIVE MULTI-YEAR — Disclosed programme mid-cycle'},
-    CONTINUATION_RISK: {cls:'state-continuation',icon:'🟠',label:'CONTINUATION RISK — Prior wave + ongoing signals'},
-    WATCHING:          {cls:'state-watching',     icon:'👁', label:'WATCHING — Precursor signals detected'},
-    CLEAR:             {cls:'state-clear',        icon:'✓', label:'CLEAR — No significant signals'},
-  };
-  return m[state]||m.CLEAR;
-}
+const $ = (id) => document.getElementById(id);
+let suggestTimer = null;
 
-// ── Page routing ───────────────────────────────────────────────────────────
-function showHome(e){
-  if(e) e.preventDefault();
-  document.getElementById('homePage').style.display='';
-  document.getElementById('howPage').classList.remove('active');
-}
-function showHow(e){
-  if(e) e.preventDefault();
-  document.getElementById('homePage').style.display='none';
-  document.getElementById('howPage').classList.add('active');
-  window.scrollTo({top:0,behavior:'smooth'});
-}
-
-// ── Sign in modal ──────────────────────────────────────────────────────────
-function openSignIn(){
-  document.getElementById('signInModal').classList.add('open');
-  setTimeout(()=>document.getElementById('signInEmail').focus(),100);
-  document.body.style.overflow='hidden';
-}
-function closeSignIn(){
-  document.getElementById('signInModal').classList.remove('open');
-  document.body.style.overflow='';
-  document.getElementById('modalError').style.display='none';
-  document.getElementById('signInEmail').value='';
-  const btn=document.getElementById('signInBtn');
-  if(btn){btn.disabled=false;btn.textContent='Send magic link →';}
-}
-function handleModalOverlayClick(e){if(e.target===document.getElementById('signInModal'))closeSignIn();}
-async function submitSignIn(){
-  const email=document.getElementById('signInEmail').value.trim();
-  const errEl=document.getElementById('modalError');
-  const btn=document.getElementById('signInBtn');
-  errEl.style.display='none';
-  if(!email||!email.includes('@')){errEl.textContent='Please enter a valid email.';errEl.style.display='block';return;}
-  btn.disabled=true;btn.textContent='Sending…';
-  try{
-    const res=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email})});
-    const data=await res.json();
-    if(!res.ok){errEl.textContent=data.error||'Something went wrong.';errEl.style.display='block';btn.disabled=false;btn.textContent='Send magic link →';return;}
-    document.getElementById('modalContent').innerHTML=`
-      <div class="modal-success">
-        <div class="modal-success-icon">📬</div>
-        <div class="modal-success-title">Check your inbox</div>
-        <div class="modal-success-sub">Magic link sent to <strong>${esc(email)}</strong>.<br><br>Click it to sign in — expires in 1 hour.<br><span style="color:var(--soft)">No email? Check spam.</span></div>
-      </div>`;
-  }catch{errEl.textContent='Network error. Please try again.';errEl.style.display='block';btn.disabled=false;btn.textContent='Send magic link →';}
-}
-
-// ── v6.1 Intelligence cards ────────────────────────────────────────────────
-function renderProgrammeCard(p){
-  if(!p || (!p.name && !p.total_size_usd)) return '';
-  const fmt = n => n >= 1e9 ? '$' + (n/1e9).toFixed(1) + 'B' : '$' + (n/1e6).toFixed(0) + 'M';
-  const pct = (p.total_size_usd && p.recognised_to_date_usd)
-    ? Math.min(100, Math.round((p.recognised_to_date_usd / p.total_size_usd) * 100))
-    : 0;
-  const metaBits = [
-    p.timeline === 'multi_year' ? 'Multi-year programme' : p.timeline === 'one_time' ? 'One-time charge' : null,
-    p.phase && p.phase !== 'unknown' ? p.phase.charAt(0).toUpperCase() + p.phase.slice(1) + ' phase' : null,
-    p.severance_component_pct ? p.severance_component_pct + '% severance' : null,
-  ].filter(Boolean).join(' · ');
-  return `<div class="programme-card">
-    <div class="programme-label">Active transformation programme</div>
-    <div class="programme-name">${esc(p.name || 'Transformation programme')}</div>
-    <div class="programme-meta">${esc(metaBits || 'Programme detected')}</div>
-    ${p.total_size_usd ? `
-      <div class="programme-progress"><div class="programme-progress-fill" style="width:${pct}%"></div></div>
-      <div class="programme-meta" style="margin-top:6px">${fmt(p.recognised_to_date_usd || 0)} recognised of ${fmt(p.total_size_usd)} total · ${pct}% complete</div>
-    ` : ''}
-    ${p.evidence_quote ? `<div class="programme-evidence">"${esc(p.evidence_quote)}"</div>` : ''}
-  </div>`;
-}
-
-function renderHeadcountCard(h){
-  if(!h || !h.mid) return '';
-  const range = (h.low && h.high && h.low !== h.high)
-    ? `~${h.low.toLocaleString()}–${h.high.toLocaleString()}`
-    : `~${h.mid.toLocaleString()}`;
-  const pctBit = h.pct_of_workforce ? `<span class="headcount-pct">${h.pct_of_workforce.toFixed(1)}% of workforce</span>` : '';
-  return `<div class="headcount-card">
-    <div class="headcount-label">Estimated impact · ${esc(h.confidence || 'low')} confidence</div>
-    <div class="headcount-num">${range} roles${pctBit}</div>
-    ${h.basis ? `<div class="headcount-basis">${esc(h.basis)}</div>` : ''}
-  </div>`;
-}
-
-function renderFunctionRiskCard(fr){
-  if(!fr || (!fr.at_risk?.length && !fr.protected?.length)) return '';
-  const atItems = (fr.at_risk || []).map(f => `
-    <div class="fn-item">
-      <span class="fn-item-fn">${esc(f.function)}</span>
-      <span class="fn-item-conf">${esc(f.confidence || 'med')}</span>
-      ${f.evidence ? `<div class="fn-item-ev">"${esc(f.evidence.slice(0, 90))}${f.evidence.length > 90 ? '…' : ''}"</div>` : ''}
-    </div>
-  `).join('');
-  const prItems = (fr.protected || []).map(f => `
-    <div class="fn-item">
-      <span class="fn-item-fn">${esc(f.function)}</span>
-      <span class="fn-item-conf">${esc(f.confidence || 'med')}</span>
-      ${f.evidence ? `<div class="fn-item-ev">"${esc(f.evidence.slice(0, 90))}${f.evidence.length > 90 ? '…' : ''}"</div>` : ''}
-    </div>
-  `).join('');
-  return `<div class="fn-grid">
-    <div class="fn-col at-risk">
-      <div class="fn-col-label">⚠ At risk</div>
-      ${atItems || '<div class="fn-empty">No functions explicitly flagged</div>'}
-    </div>
-    <div class="fn-col protected">
-      <div class="fn-col-label">✓ Protected</div>
-      ${prItems || '<div class="fn-empty">No functions explicitly protected</div>'}
-    </div>
-  </div>`;
-}
-
-function renderBankruptcyCard(b){
-  if(!b || !b.detected) return '';
-  const ch = b.chapter;
-  const title = ch === '7'  ? 'Chapter 7 — Liquidation'
-              : ch === '11' ? 'Chapter 11 — Reorganisation'
-              : ch === '15' ? 'Chapter 15 — Cross-border filing'
-              : 'Bankruptcy filing';
-  const dateStr = b.filing_date
-    ? new Date(b.filing_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-    : null;
-  const metaBits = [];
-  if(dateStr) metaBits.push('Filed ' + dateStr);
-  if(b.affected_subsidiaries?.length) {
-    metaBits.push(b.affected_subsidiaries.length + ' affected ' + (b.affected_subsidiaries.length === 1 ? 'entity' : 'entities'));
-  }
-  metaBits.push('Court-supervised process');
-  const tags = [];
-  if(ch === '7')  tags.push('<span class="bankruptcy-tag">Asset liquidation</span>');
-  if(ch === '11') tags.push('<span class="bankruptcy-tag">Reorganisation under court</span>');
-  if(ch === '15') tags.push('<span class="bankruptcy-tag">Cross-border insolvency</span>');
-  if(b.debtor_in_possession === true)  tags.push('<span class="bankruptcy-tag dip">Debtor-in-possession financing</span>');
-  if(b.debtor_in_possession === false) tags.push('<span class="bankruptcy-tag">No DIP financing disclosed</span>');
-  return `<div class="bankruptcy-card">
-    <div class="bankruptcy-label">Court filing</div>
-    <div class="bankruptcy-title">${esc(title)}</div>
-    <div class="bankruptcy-meta">${metaBits.map(esc).join(' · ')}</div>
-    ${b.description ? `<div class="bankruptcy-desc">${esc(b.description)}</div>` : ''}
-    ${b.evidence_quote ? `<div class="bankruptcy-quote">"${esc(b.evidence_quote)}"</div>` : ''}
-    ${tags.length ? `<div class="bankruptcy-tags">${tags.join('')}</div>` : ''}
-  </div>`;
-}
-
-// ── Trend line renderer ────────────────────────────────────────────────────
-function renderTrendLine(hist){
-  if(!hist||hist.length===0) return`<div class="sl-empty">History builds over time as you search each quarter.</div>`;
-  const W=500,H=72,PAD=28;
-  const cW=W-PAD*2,cH=H-16;
-  const scores=hist.map(h=>h.score||0);
-  const minS=Math.max(0,Math.min(...scores)-10);
-  const maxS=Math.min(100,Math.max(...scores)+10);
-  const range=maxS-minS||1;
-  const pts=hist.map((h,i)=>({
-    x:PAD+(i/Math.max(hist.length-1,1))*cW,
-    y:H-16-((h.score-minS)/range)*cH,h
-  }));
-  const first=scores[0]||0,last=scores[scores.length-1]||0;
-  const lc=last>first+5?'#D94F3D':last<first-5?'#2D7A5F':'#C17F3B';
-  const pathD=pts.map((p,i)=>i===0?`M${p.x.toFixed(1)},${p.y.toFixed(1)}`:`L${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
-  const dots=pts.map(p=>{
-    const bc=p.h.band==='HIGH'?'#D94F3D':p.h.band==='MEDIUM'?'#C17F3B':'#2D7A5F';
-    const ql=p.h.quarter_label?p.h.quarter_label.split('(')[0].trim().slice(0,10):'';
-    const aw=p.h.quarterly_status?.filingStatus==='awaited';
-    return`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4.5" fill="${bc}" stroke="#fff" stroke-width="2"/>
-<text x="${p.x.toFixed(1)}" y="${(H-2).toFixed(1)}" font-family="monospace" font-size="8" fill="#94A3B4" text-anchor="middle">${esc(ql)}</text>
-<text x="${p.x.toFixed(1)}" y="${(p.y-9).toFixed(1)}" font-family="monospace" font-size="9" font-weight="600" fill="${bc}" text-anchor="middle">${aw?'~':''}${p.h.score}</text>`;
-  }).join('');
-  const trend=last>first+5?'↑ Rising':last<first-5?'↓ Falling':'→ Stable';
-  return`<svg class="sl-svg" width="100%" viewBox="0 0 ${W} ${H+16}" xmlns="http://www.w3.org/2000/svg">
-<path d="${pathD}" fill="none" stroke="${lc}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" opacity="0.6"/>
-${dots}
-${hist.length>1?`<text x="${W-4}" y="${H+14}" font-family="monospace" font-size="8" fill="#94A3B4" text-anchor="end">${hist.length} quarters · ${trend}</text>`:''}
-</svg>`;
-}
-
-// ── Result renderer ────────────────────────────────────────────────────────
-function renderResult(data){
-  const{risk,company,signalsGated}=data;
-  const r=risk;
-  const{score,band,signals=[],disclaimer,confirmedEvents=[],quarterlyStatus,claudeSummary,scoreHistory,companyState,stateConfidence,confirmedEvent,stateFloor,stateCeiling,stateOverrideReason}=risk;
-  const bs=bandStyle(band);
-  const offset=scoreOffset(score);
-  const isAwaited=quarterlyStatus?.filingStatus==='awaited'||quarterlyStatus?.filingStatus==='overdue';
-  const isOverdue=quarterlyStatus?.filingStatus==='overdue';
-  const sc=stateConfig(companyState||'CLEAR');
-  const bankruptcyDetected = r.bankruptcy?.detected === true;
-
-  const stateBadgeHtml=`
-    <div class="state-bar">
-      <div class="state-badge ${sc.cls}">${sc.icon} ${sc.label}</div>
-      ${(companyState==='ACTIVE'||companyState==='ACTIVE_MULTI_YEAR'||companyState==='CONTINUATION_RISK')&&(confirmedEvent||bankruptcyDetected)?
-        `<span class="state-floor-notice">🔒 Score floor applied — ${esc(stateOverrideReason || 'confirmed event detected')}</span>`:''}
-    </div>`;
-
-  const awaitedHtml=isAwaited?`
-    <div class="awaited-banner ${isOverdue?'ab-red':'ab-amber'}">
-      <span>${isOverdue?'🔴':'🟡'} ${esc(quarterlyStatus.signalAwaitedMessage||'Filing pending — score reflects prior quarter data.')}</span>
-    </div>`:'';
-
-  const summaryHtml=claudeSummary?`<div class="summary-block">${esc(claudeSummary)}</div>`:'';
-
-  // v6.1 INTELLIGENCE CARDS — bankruptcy REPLACES programme card when detected
-  const intelCards = `
-    ${bankruptcyDetected ? renderBankruptcyCard(r.bankruptcy) : renderProgrammeCard(r.programme)}
-    ${renderHeadcountCard(r.headcount)}
-    ${renderFunctionRiskCard(r.function_risk)}
-    ${r.large_employer_flag && !bankruptcyDetected && confirmedEvents.length === 0
-      ? `<div class="large-employer-note">⚠ Large employer (50,000+ employees) — site-specific cuts may occur outside of these signals if not formally disclosed.</div>`
-      : ''}
-  `;
-
-  const sigsHtml=signals.length===0
-    ?'<div class="sig-none">No signals detected in current SEC filings or Tier A/B media.</div>'
-    :signals.map(s=>`
-      <div class="sig-row">
-        <div class="sig-dot ${sigDot(s.sourceTier)}"></div>
-        <div class="sig-text">
-          <div class="sig-name">${esc(s.alertMessage||s.type)}</div>
-          <div class="sig-src">${esc(s.source)}${s.filingDate?' · '+s.filingDate:''}</div>
-        </div>
-        <div class="sig-pts">+${s.weightedPoints}</div>
-      </div>`).join('');
-
-  const confirmedAllEvents=[...(confirmedEvent?[confirmedEvent]:[]),...(confirmedEvents||[])]
-    .filter((e,i,arr)=>arr.findIndex(x=>x.description===e.description)===i);
-  const confirmedHtml=confirmedAllEvents.map(e=>`
-    <div class="confirmed-strip">
-      <div class="conf-dot"></div>
-      <div class="conf-text"><strong>Confirmed:</strong> ${esc(e.description)}${e.date?' · '+e.date:''}${e.rolesAffected?' · '+e.rolesAffected.toLocaleString()+' roles':''}</div>
-      <div class="conf-badge">0 pts</div>
-    </div>`).join('');
-
-  const privateHtml=!disclaimer?.companyEligibility?.isPublicCompany?
-    `<div class="private-notice">⚠ Private company — score based on news signals only.</div>`:'';
-
-  const hist=scoreHistory||[];
-  const histWC=hist.length>0?hist:[{score,band,quarter_label:quarterlyStatus?.currentQuarterLabel||'Now',key_signal:null,scored_at:new Date().toISOString(),company_state:companyState}];
-
-  return`<div class="result-card">
-    <div class="rc-header">
-      <div class="rc-co">
-        <div>
-          <div class="rc-name">${esc(company.name)}</div>
-          <div class="rc-meta">${company.ticker?company.ticker+' · ':''}${disclaimer?.companyEligibility?.isUSListed?'US-listed public':'Private / non-US'}</div>
-        </div>
-      </div>
-      <div class="rc-live">● Live</div>
-    </div>
-    ${stateBadgeHtml}
-    ${awaitedHtml}
-    ${summaryHtml}
-    ${intelCards}
-    <div class="rc-body">
-      <div class="rc-gauge-col">
-        <div class="gauge">
-          <svg viewBox="0 0 120 120">
-            <circle class="g-track" cx="60" cy="60" r="54"/>
-            <circle class="g-fill" cx="60" cy="60" r="54" stroke="${bs.color}" style="stroke-dashoffset:${offset}"/>
-          </svg>
-          <div class="g-center">
-            ${isAwaited?'<div class="g-approx">~</div>':''}
-            <div class="g-num" style="color:${bs.color}">${score}</div>
-            <div class="g-sub">/ 100</div>
-          </div>
-        </div>
-        <div class="risk-tag ${bs.cls}">${bs.label}</div>
-        <div class="g-disc">${bankruptcyDetected?'Court filing.':(companyState==='ACTIVE'||companyState==='ACTIVE_MULTI_YEAR'||companyState==='CONTINUATION_RISK'?'Confirmed event.':'Predictive signal.')}</div>
-      </div>
-      <div class="rc-signals-col">
-        <div class="sig-title">Signals</div>
-        <div class="sig-list collapsed" id="sigList">${sigsHtml}</div>
-        ${signals.length>2?`<button class="sig-toggle" id="sigToggle" onclick="toggleSignals()">Show all ${signals.length} signals ↓</button>`:''}
-        ${privateHtml}${confirmedHtml}
-      </div>
-    </div>
-    <div class="sparkline-block">
-      <div class="sl-title">4-quarter trend</div>
-      <div class="sl-chart-wrap">${renderTrendLine(histWC)}</div>
-    </div>
-  </div>
-  <div class="result-disc">
-    Predictive signal — not a confirmed outcome. <a href="#" onclick="showHow(event)" style="color:var(--coral)">How scores are calculated →</a>
-  </div>`;
-}
-
-function renderLoading(name){
-  setTimeout(()=>{
-    const bar=document.getElementById('loadingBar');
-    const timeEl=document.getElementById('loadingTime');
-    if(!bar)return;
-    let pct=0;
-    const steps=[
-      {target:12,label:'Classifying company state…',delay:300},
-      {target:30,label:'Reading full SEC filings…',delay:1500},
-      {target:50,label:'Extracting programme intelligence…',delay:4000},
-      {target:70,label:'Checking verified news…',delay:7000},
-      {target:88,label:'Estimating headcount impact…',delay:10000},
-      {target:95,label:'Generating summary…',delay:13000},
-    ];
-    let elapsed=0;
-    const timer=setInterval(()=>{
-      elapsed+=100;
-      const step=steps.find(s=>elapsed>=s.delay&&pct<s.target);
-      if(step){pct=Math.min(step.target,pct+2);}
-      if(bar) bar.style.width=pct+'%';
-      if(timeEl) timeEl.textContent=Math.ceil(elapsed/1000)+'s';
-    },100);
-    window._loadingTimer=timer;
-  },50);
-
-  const stepLabels=['Classifying state…','Reading full filings…','Extracting programme data…','Checking verified news…','Generating summary…'];
-  const stepsHtml=stepLabels.map((l,i)=>`<div class="loading-step" style="animation-delay:${[.3,1,2.5,4,6][i]}s">${l}</div>`).join('');
-
-  return`<div class="loading-card">
-    <div class="spinner"></div>
-    <div class="loading-co">Scoring ${esc(name)}…</div>
-    <div class="loading-bar-wrap"><div class="loading-bar-inner" id="loadingBar"></div></div>
-    <div class="loading-time" id="loadingTime">0s</div>
-    <div class="loading-steps">${stepsHtml}</div>
-  </div>`;
-}
-
-function stopLoadingTimer(){
-  if(window._loadingTimer){clearInterval(window._loadingTimer);window._loadingTimer=null;}
-  const bar=document.getElementById('loadingBar');
-  if(bar){bar.style.width='100%';}
-}
-
-// ── Resolve → confirm → score ──────────────────────────────────────────────
-async function runSearch(){
-  const name=document.getElementById('heroInput').value.trim();
-  if(!name)return;
-  const sec=document.getElementById('resultSection');
-  const con=document.getElementById('resultContainer');
-  const btn=document.getElementById('searchBtn');
-  sec.classList.remove('hidden');
-  sec.scrollIntoView({behavior:'smooth',block:'nearest'});
-  btn.disabled=true;btn.textContent='…';
-  try{
-    const r=await fetch(`/api/resolve?q=${encodeURIComponent(name)}`);
-    const d=await r.json();
-    if(!r.ok){await scoreCompany(name,null,con);return;}
-    const{confidence,matches}=d;
-    if(confidence==='high'&&matches.length===1){
-      const m=matches[0];
-      if(m.type==='index'){con.innerHTML=renderIndexError(m,name);return;}
-      addRecent(name);
-      await scoreCompany(m.legalName||name,m.ticker||null,con);
-      return;
-    }
-    con.innerHTML=renderConfirmation(d,name);
-  }catch{
-    con.innerHTML=`<div class="msg-card"><div class="msg-icon">🌐</div><div class="msg-title">Connection error</div><div class="msg-sub">Please check your connection and try again.</div></div>`;
-  }finally{btn.disabled=false;btn.textContent='Score →';}
-}
-
-async function scoreCompany(companyName,ticker,con){
-  con.innerHTML=renderLoading(companyName);
-  try{
-    const body={companyName};
-    if(ticker) body.ticker=ticker;
-    const res=await fetch('/api/score',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body),credentials:'include'});
-    const data=await res.json();
-    stopLoadingTimer();
-    if(!res.ok){
-      con.innerHTML=`<div class="msg-card"><div class="msg-icon">⚠️</div><div class="msg-title">Could not score this company</div><div class="msg-sub">${esc(data.error||'Please try again.')}</div></div>`;
-    }else{
-      const resultName=data.company?.name||companyName;
-      con.innerHTML=renderResult(data)+renderEmailCapture(data.risk?.band||'LOW',resultName);
-      addRecent(companyName);
-      showLandingZone(resultName);
-      if(data.risk?.band==='HIGH'){
-        setTimeout(()=>document.getElementById('captureEmail')?.focus?.(),800);
-      }
-    }
-  }catch{
-    con.innerHTML=`<div class="msg-card"><div class="msg-icon">🌐</div><div class="msg-title">Connection error</div><div class="msg-sub">Please try again.</div></div>`;
-  }
-}
-
-function renderConfirmation(resolveData,originalQuery){
-  const{confidence,matches}=resolveData;
-
-  // ── NO-MATCH case ─ if the only "match" is type:unknown / not_found,
-  // do not offer scoring. Prompt user to try a different name.
-  const onlyUnknown = matches.length === 1
-    && (matches[0].type === 'unknown' || matches[0].source === 'not_found');
-  if (onlyUnknown) {
-    return `<div class="msg-card">
-      <div class="msg-icon">🔍</div>
-      <div class="msg-title">No match found for "${esc(originalQuery)}"</div>
-      <div class="msg-sub">EjectSeat scores US-listed public companies and Foreign Private Issuers (with SEC filings). Try a different name or stock ticker — for example "Snap" or "INTC".</div>
-      <button class="search-btn" style="border-radius:8px;padding:10px 22px" onclick="resetAndFocusSearch()">Try another company →</button>
-    </div>`;
-  }
-
-  const isMultiple=matches.length>1;
-  const header=isMultiple
-    ?`Found ${matches.length} matches for "<strong>${esc(originalQuery)}</strong>" — which did you mean?`
-    :`Confirming match for "<strong>${esc(originalQuery)}</strong>":`;
-
-  const rows=matches.map(m=>{
-    const tc=m.type==='public'?'public':m.type==='private'?'private':'index';
-    const tl=m.ticker||m.type.toUpperCase();
-    const desc=m.description||(m.type==='private'?'Private company — news signals only':'');
-    const action=m.type==='index'
-      ?`<span style="font-family:var(--mono);font-size:10px;color:var(--mid)">Not scoreable</span>`
-      :`<button class="search-btn" style="border-radius:6px;padding:8px 14px" onclick="confirmAndScore('${esc(m.legalName||originalQuery)}','${esc(m.ticker||'')}')">Score →</button>`;
-    return`<div class="resolve-match">
-      <div class="rm-left">
-        <div class="rm-ticker ${tc}">${esc(tl)}</div>
-        <div class="rm-info">
-          <div class="rm-name">${esc(m.legalName&&m.legalName!=='INDEX_NOT_COMPANY'?m.legalName:originalQuery)}</div>
-          ${desc?`<div class="rm-desc">${esc(desc)}</div>`:''}
-        </div>
-      </div>
-      <div class="rm-action">${action}</div>
-    </div>`;
-  }).join('');
-
-  return`<div class="resolve-strip">
-    <div class="resolve-header">${header}</div>
-    ${rows}
-    <div class="resolve-footer">
-      <span>Different company?</span>
-      <a onclick="resetAndFocusSearch()">Try a different search →</a>
-    </div>
-  </div>`;
-}
-
-// Clears the input, returns focus to it, and scrolls user to the top
-function resetAndFocusSearch(){
-  const con = document.getElementById('resultContainer');
-  if (con) con.innerHTML = '';
-  const sec = document.getElementById('resultSection');
-  if (sec) sec.classList.add('hidden');
-  const lz = document.getElementById('lzSection');
-  if (lz) lz.classList.add('hidden');
-  const inp = document.getElementById('heroInput');
-  if (inp){ inp.value=''; inp.focus(); }
-  window.scrollTo({top:0, behavior:'smooth'});
-}
-
-function renderIndexError(match,query){
-  return`<div class="msg-card">
-    <div class="msg-icon">📊</div>
-    <div class="msg-title">${esc(query)} is a market index</div>
-    <div class="msg-sub">${esc(match.description||'EjectSeat scores individual companies, not market indexes.')}</div>
-  </div>`;
-}
-
-async function confirmAndScore(legalName,ticker){
-  const con=document.getElementById('resultContainer');
-  await scoreCompany(legalName,ticker||null,con);
-}
-
-// ── Utilities ──────────────────────────────────────────────────────────────
-function quickSearch(n){document.getElementById('heroInput').value=n;runSearch();}
-function addRecent(name){
-  try{const r=JSON.parse(localStorage.getItem('es_recents')||'[]');const u=[name,...r.filter(x=>x!==name)].slice(0,5);localStorage.setItem('es_recents',JSON.stringify(u));renderChips(u);}catch{}
-}
-function renderChips(arr){
-  if(!arr.length)return;
-  document.getElementById('recentChips').innerHTML=arr.map(n=>`<span class="chip" onclick="quickSearch('${esc(n)}')">${esc(n)}</span>`).join('');
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────
-window.addEventListener('DOMContentLoaded',()=>{
-  getSession();
-  try{const r=JSON.parse(localStorage.getItem('es_recents')||'[]');if(r.length)renderChips(r);}catch{}
-  document.getElementById('heroInput').addEventListener('keypress',e=>{if(e.key==='Enter')runSearch();});
-  document.getElementById('signInEmail').addEventListener('keypress',e=>{if(e.key==='Enter')submitSignIn();});
-  document.addEventListener('keydown',e=>{if(e.key==='Escape')closeSignIn();});
-  try{fetch('/api/beacon',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({referrer:document.referrer,pathname:location.pathname}),credentials:'include'});}catch{}
+$('q').addEventListener('input', (e) => {
+  const v = e.target.value.trim();
+  if (suggestTimer) clearTimeout(suggestTimer);
+  if (v.length < 2) { $('suggestions').classList.remove('open'); return; }
+  suggestTimer = setTimeout(() => fetchSuggestions(v), 180);
 });
 
-// ── LandingZone ────────────────────────────────────────────────────────────
-const lzSelectedLocs = new Set(['us','remote']);
-
-function toggleLzLoc(btn){
-  const loc = btn.dataset.loc;
-  if(btn.classList.contains('sel')){
-    if(lzSelectedLocs.size <= 1) return;
-    lzSelectedLocs.delete(loc);
-    btn.classList.remove('sel');
-  } else {
-    if(lzSelectedLocs.size >= 5){ alert('Maximum 5 locations. Deselect one first.'); return; }
-    lzSelectedLocs.add(loc);
-    btn.classList.add('sel');
-  }
-}
-
-function showLandingZone(scoredCompany){
-  const sec = document.getElementById('lzSection');
-  sec.classList.remove('hidden');
-  if(scoredCompany){
-    const h = sec.querySelector('h3');
-    if(h) h.textContent = `While you watch ${scoredCompany} — find your next move.`;
-  }
-}
-
-async function loadLandingZone(){
-  const role = document.getElementById('lzRole').value;
-  const locs = [...lzSelectedLocs].join(',');
-  const btn  = document.getElementById('lzSearchBtn');
-  const con  = document.getElementById('lzContainer');
-  btn.disabled = true; btn.textContent = 'Loading…';
-  con.innerHTML = '<div class="lz-loading">⟳ Fetching live hiring data…</div>';
-  try{
-    const res  = await fetch(`/api/landingzone?role=${role}&locations=${locs}`);
+async function fetchSuggestions(q) {
+  try {
+    const res = await fetch(`/api/resolve?q=${encodeURIComponent(q)}`);
     const data = await res.json();
-    if(!res.ok || !data.companies){
-      con.innerHTML = '<div class="lz-empty">Could not load hiring data. Please try again.</div>';
-      return;
-    }
-    renderLZ(data);
-  } catch {
-    con.innerHTML = '<div class="lz-empty">Network error loading hiring data.</div>';
-  } finally {
-    btn.disabled = false; btn.textContent = 'Search →';
-  }
-}
-
-function trendBadge(trend, pct){
-  const cls = trend==='surging'?'tr-surging':trend==='growing'?'tr-growing':trend==='cooling'?'tr-cooling':'tr-stable';
-  const lbl = trend==='surging'?`▲ Surging +${pct}%`:trend==='growing'?`↑ Growing +${pct}%`:trend==='cooling'?`↓ Cooling`:' → Stable';
-  return `<span class="lz-trend ${cls}">${lbl}</span>`;
-}
-
-function renderLZ(data){
-  const { companies, totalJobs } = data;
-  if(!companies || !companies.length){
-    document.getElementById('lzContainer').innerHTML =
-      '<div class="lz-empty">No matching companies found for these filters.<br>Try broader role or location criteria.</div>';
-    return;
-  }
-  const stats = `<div class="lz-stats"><strong>${companies.length}</strong> companies · <strong>${(totalJobs||0).toLocaleString()}</strong> open roles · Live from Adzuna${data.fromCache?' · cached':''}</div>`;
-  const cards = companies.map(c => {
-    const locs = (c.locationBreakdown||[]).slice(0,3).map(l =>
-      `<div class="lz-loc-row"><span>${l.flag||''} ${esc(l.label)}</span><span class="lz-loc-count">${(l.count||0).toLocaleString()}</span></div>`
+    const sugg = data.suggestions || [];
+    if (!sugg.length) { $('suggestions').classList.remove('open'); return; }
+    $('suggestions').innerHTML = sugg.map(s =>
+      `<div class="suggestion" data-name="${escapeHtml(s.name)}" data-ticker="${s.ticker || ''}">
+         <div>${escapeHtml(s.name)} ${s.ticker ? `<span style="color:var(--text-faint)">· ${s.ticker}</span>` : ''}</div>
+         ${s.hint ? `<div class="hint">${escapeHtml(s.hint)}</div>` : ''}
+       </div>`
     ).join('');
-    const riskRef = c.riskCrossRef
-      ? `<div class="lz-risk-ref ${c.riskBand==='MEDIUM'?'lz-risk-med':''}">${esc(c.riskCrossRef)}</div>` : '';
-    return `
-      <div class="lz-card ${c.riskBand==='HIGH'?'risk-flag':''}">
-        <div class="lz-cname">${esc(c.name)}</div>
-        <div class="lz-roles">${(c.totalRoles||0).toLocaleString()} open roles</div>
-        ${trendBadge(c.weeklyTrend||'stable', Math.abs(c.trendPct||0))}
-        ${locs ? `<div class="lz-locs">${locs}</div>` : ''}
-        ${riskRef}
-      </div>`;
-  }).join('');
-  document.getElementById('lzContainer').innerHTML = stats + '<div class="lz-grid">' + cards + '</div>';
+    $('suggestions').classList.add('open');
+    document.querySelectorAll('.suggestion').forEach(el => {
+      el.addEventListener('click', () => {
+        $('q').value = el.dataset.name;
+        $('suggestions').classList.remove('open');
+        runScore(el.dataset.name, el.dataset.ticker);
+      });
+    });
+  } catch {}
 }
 
+$('go').addEventListener('click', () => runScore($('q').value.trim()));
+$('q').addEventListener('keydown', (e) => { if (e.key === 'Enter') runScore($('q').value.trim()); });
 
-// ── Inline email capture — shown after HIGH/MEDIUM scores ─────────────────
-function renderEmailCapture(band, companyName){
-  if(band==='LOW') return '';
-  const urgency = band==='HIGH'
-    ? `Get alerted if ${esc(companyName)}'s score changes`
-    : `Track ${esc(companyName)} — get score change alerts`;
-  return `<div class="capture-strip" id="captureStrip">
-    <div class="capture-left">
-      <div class="capture-icon">${band==='HIGH'?'⚡':'👁'}</div>
-      <div class="capture-title">${urgency}</div>
-      <div class="capture-sub">Free · One email when the score moves</div>
-    </div>
-    <div>
-      <div class="capture-form">
-        <input class="capture-input" type="email" id="captureEmail" placeholder="your@email.com" autocomplete="email">
-        <button class="capture-btn" id="captureBtn" onclick="submitCapture('${esc(companyName)}')">Notify me →</button>
-      </div>
-      <a class="capture-skip" onclick="document.getElementById('captureStrip').style.display='none'">No thanks</a>
-    </div>
-  </div>`;
-}
+async function runScore(companyName, ticker) {
+  if (!companyName) return;
+  $('loading').classList.add('show');
+  $('result').classList.remove('show');
+  $('suggestions').classList.remove('open');
+  $('go').disabled = true;
 
-async function submitCapture(companyName){
-  const email = document.getElementById('captureEmail')?.value?.trim();
-  const btn   = document.getElementById('captureBtn');
-  if(!email||!email.includes('@')){
-    document.getElementById('captureEmail').style.borderColor='#D94F3D';
-    return;
-  }
-  if(btn){btn.disabled=true;btn.textContent='Saving…';}
-  try{
-    await fetch('/api/beta',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({email, source:'score_capture', company:companyName})});
-    const strip=document.getElementById('captureStrip');
-    if(strip) strip.innerHTML=`<div class="capture-done">✓ Got it — we'll email you if ${esc(companyName)}'s score changes.</div>`;
-  }catch{
-    if(btn){btn.disabled=false;btn.textContent='Notify me →';}
+  try {
+    const res = await fetch('/api/score', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ companyName, ticker: ticker || undefined }),
+    });
+    const data = await res.json();
+    render(data);
+  } catch (err) {
+    $('result').innerHTML = `<p style="color:var(--red-soft)">Error: ${escapeHtml(err.message || String(err))}</p>`;
+    $('result').classList.add('show');
+  } finally {
+    $('loading').classList.remove('show');
+    $('go').disabled = false;
   }
 }
 
-
-// ── Collapsible signals ────────────────────────────────────────────────────
-function toggleSignals(){
-  const list=document.getElementById('sigList');
-  const btn=document.getElementById('sigToggle');
-  if(!list||!btn)return;
-  const collapsed=list.classList.toggle('collapsed');
-  btn.textContent=collapsed?`Show all signals ↓`:'Show less ↑';
+function render(data) {
+  const r = data.risk;
+  const state = r.companyState || 'CLEAR';
+  const html = `
+    <span class="state-badge ${state}">${state}</span>
+    <div class="score-row">
+      <div class="score-big">${r.score}</div>
+      <div class="score-max">/ 100</div>
+      <div class="band">${r.band || ''} risk</div>
+    </div>
+    <div class="summary">${escapeHtml(r.claudeSummary || '')}</div>
+    ${(r.signals && r.signals.length) ? `
+      <div class="signals">
+        <h3>Signals in evidence bundle</h3>
+        ${r.signals.slice(0, 8).map(s => `
+          <div class="signal">
+            <div>${escapeHtml(s.alertMessage || s.type || '')}</div>
+            <div class="src">${escapeHtml(s.source || '')}</div>
+          </div>`).join('')}
+      </div>` : ''}
+    <div class="disclaimer">
+      <div>${escapeHtml(r.disclaimer?.signalNature || '')}</div>
+      <div style="margin-top:6px">${escapeHtml(r.disclaimer?.productScope || '')}</div>
+    </div>
+  `;
+  $('result').innerHTML = html;
+  $('result').classList.add('show');
 }
 
+function escapeHtml(s) {
+  return String(s || '').replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c]));
+}
 </script>
 </body>
 </html>

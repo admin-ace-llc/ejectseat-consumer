@@ -1,32 +1,124 @@
-// lib/scoring/engine.ts — EjectSeat Consumer v6.1
+// lib/scoring/engine.ts — EjectSeat Consumer v7
 //
-// v5: State-aware scoring with floor/ceiling, cross-signal corroboration
-// v6.1: + ACTIVE_MULTI_YEAR state (60-90 band for mid-cycle programmes)
-//       + phase multiplier (programmes late in cycle score lower)
-//       + bankruptcy override (forces ACTIVE + floor with chapter cited)
+// ROLE CHANGE:
+//   v5/v6.1 engine scored from raw signal points + corroboration + phase.
+//   v7 engine is a VALIDATOR — Sonnet returns state+score; engine confirms
+//   it lies in the band, applies signal_awaited penalty, maps to band label.
+//   Bankruptcy HARD OVERRIDE removed per user alignment ("no hard overrides —
+//   we are building a forward-looking predictor"). Sonnet earns the verdict
+//   from the evidence including bankruptcy filings.
+//
+// v5 fallback math preserved (phase multiplier, corroboration, floors/ceilings)
+// so that if USE_COMPREHENSIVE_V2=false the old path still scores sanely.
 
-import { Signal, RiskBand, Confidence } from '@/types';
-import type { CompanyState } from '@/lib/signals/nlp-analyzer';
-import type { ProgrammePhase, BankruptcyFiling } from '@/types';
+import type {
+  Signal, RiskBand, Confidence, CompanyState,
+  ProgrammePhase, BankruptcyFiling, ComprehensiveIntelligence,
+} from '@/types';
+import { normaliseLegacyState } from '@/types';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// State bounds
+// v7 state bands (4 states per user alignment)
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function getStateBounds(state: CompanyState): { floor: number; ceiling: number } {
+const V7_BANDS: Record<CompanyState, { floor: number; ceiling: number }> = {
+  CLEAR:  { floor: 0,  ceiling: 35 },
+  WATCH:  { floor: 25, ceiling: 64 },
+  LIKELY: { floor: 45, ceiling: 78 },
+  ACTIVE: { floor: 60, ceiling: 90 },
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v5/v6.1 legacy bands (includes ACTIVE_MULTI_YEAR and CONTINUATION_RISK for
+// the fallback orchestrator path when flag is off)
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function getStateBounds(state: string): { floor: number; ceiling: number } {
   switch (state) {
     case 'ACTIVE':             return { floor: 65, ceiling: 88 };
-    case 'ACTIVE_MULTI_YEAR':  return { floor: 60, ceiling: 90 }; // v6.1
+    case 'ACTIVE_MULTI_YEAR':  return { floor: 60, ceiling: 90 };
     case 'CONTINUATION_RISK':  return { floor: 50, ceiling: 82 };
     case 'WATCHING':           return { floor: 25, ceiling: 64 };
+    // v7 names
+    case 'WATCH':              return { floor: 25, ceiling: 64 };
+    case 'LIKELY':             return { floor: 45, ceiling: 78 };
     case 'CLEAR':
     default:                   return { floor: 0,  ceiling: 35 };
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// v6.1 NEW — Phase multiplier
-// Early/mid programmes get boosted; late/complete programmes get discounted.
+// v7 PRIMARY — validateAndFinaliseScore
+// Takes the intelligence object from Sonnet, returns the final score with
+// signal_awaited penalty applied and band label computed.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface FinalisedScore {
+  score:      number;
+  band:       RiskBand;
+  confidence: Confidence;
+  state:      CompanyState;
+  floor:      number;
+  ceiling:    number;
+  notes:      string[];
+}
+
+export function validateAndFinaliseScore(
+  intel: ComprehensiveIntelligence,
+  signalAwaited: boolean,
+  fullyEligible: boolean,
+): FinalisedScore {
+  const notes: string[] = [];
+  const band = V7_BANDS[intel.state];
+
+  let score = Math.max(band.floor, Math.min(band.ceiling, intel.score));
+  if (score !== intel.score) notes.push(`Score clamped from ${intel.score} to ${score} (${intel.state} band)`);
+
+  if (signalAwaited) {
+    const before = score;
+    score = Math.round(score * 0.85);
+    // Keep within band floor
+    score = Math.max(band.floor, score);
+    notes.push(`Signal-awaited penalty: ${before} → ${score} (0.85× multiplier, floored at ${band.floor})`);
+  }
+
+  return {
+    score,
+    band: getBand(score),
+    confidence: getConfidence(fullyEligible, signalAwaited, score, intel.confidence),
+    state: intel.state,
+    floor: band.floor,
+    ceiling: band.ceiling,
+    notes,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Band and confidence mapping
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function getBand(score: number): RiskBand {
+  if (score >= 65) return 'HIGH';
+  if (score >= 40) return 'MEDIUM';
+  return 'LOW';
+}
+
+export function getConfidence(
+  fullyEligible: boolean,
+  signalAwaited: boolean,
+  score: number,
+  intelConfidence?: 'high' | 'medium' | 'low',
+): Confidence {
+  if (signalAwaited)  return 'signal_awaited';
+  if (!fullyEligible) return 'low';
+  if (intelConfidence === 'low') return 'low';
+  if (score >= 65 && intelConfidence === 'high')   return 'high';
+  if (score >= 40)                                  return 'medium';
+  return 'low';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// v5/v6.1 FALLBACK MATH — preserved in full for flag-off path
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function getPhaseMultiplier(phase: ProgrammePhase | undefined): number {
@@ -39,41 +131,22 @@ export function getPhaseMultiplier(phase: ProgrammePhase | undefined): number {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// v6.1 NEW — Bankruptcy override
-// Chapter 7/11/15 filing forces ACTIVE state with floor score.
-// Returns {state, floor, reason} or null if not triggered.
-// ─────────────────────────────────────────────────────────────────────────────
-
-export function getBankruptcyOverride(
-  bankruptcy: BankruptcyFiling | undefined
-): { state: CompanyState; floor: number; reason: string } | null {
-  if (!bankruptcy?.detected || !bankruptcy.chapter) return null;
-
-  // Chapter 7 = liquidation (highest severity)
-  // Chapter 11 = reorganisation under court
-  // Chapter 15 = cross-border insolvency coordination
-  const floor = bankruptcy.chapter === '7' ? 85
-              : bankruptcy.chapter === '11' ? 75
-              : 65;
-
-  return {
-    state: 'ACTIVE',
-    floor,
-    reason: `Chapter ${bankruptcy.chapter} filing — court-supervised process${bankruptcy.filing_date ? ' filed ' + bankruptcy.filing_date : ''}`,
-  };
+/**
+ * v6.1 bankruptcy override. In v7 this returns null (no hard override by
+ * design). Preserved as an exported function so the v5 fallback route still
+ * compiles; flagging semantics kept in case we want it back.
+ */
+export function getBankruptcyOverride(_b: BankruptcyFiling | undefined): null {
+  return null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// State-aware signal weights
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function getStateWeight(
-  signalSource:    'xbrl' | 'media' | 'earnings' | '8k',
-  state:           CompanyState,
+  signalSource: 'xbrl' | 'media' | 'earnings' | '8k',
+  state: string,
   escalationType?: 'escalation' | 'completion' | 'neutral',
 ): number {
-  if (state === 'ACTIVE' || state === 'ACTIVE_MULTI_YEAR') {
+  const s = normaliseLegacyState(state);
+  if (s === 'ACTIVE') {
     if (signalSource === 'media') {
       if (escalationType === 'escalation') return 1.3;
       if (escalationType === 'completion') return 0.5;
@@ -83,43 +156,35 @@ export function getStateWeight(
     if (signalSource === 'earnings') return 1.2;
     if (signalSource === '8k')      return 1.1;
   }
-
-  if (state === 'CONTINUATION_RISK') {
-    if (signalSource === 'xbrl')    return 1.4;
+  if (s === 'LIKELY') {
+    if (signalSource === 'xbrl')     return 1.4;
+    if (signalSource === 'earnings') return 1.3;
+    if (signalSource === '8k')       return 1.2;
     if (signalSource === 'media') {
       if (escalationType === 'escalation') return 1.4;
       if (escalationType === 'completion') return 0.6;
       return 0.9;
     }
-    if (signalSource === 'earnings') return 1.3;
-    if (signalSource === '8k')      return 1.2;
   }
-
-  if (state === 'WATCHING') {
+  if (s === 'WATCH') {
     if (signalSource === 'xbrl')     return 1.1;
     if (signalSource === 'earnings') return 1.2;
     if (signalSource === 'media')    return 1.0;
     if (signalSource === '8k')       return 1.1;
   }
-
-  if (state === 'CLEAR') {
+  if (s === 'CLEAR') {
     if (signalSource === 'xbrl')     return 1.2;
     if (signalSource === 'earnings') return 1.0;
     if (signalSource === 'media')    return 1.0;
     if (signalSource === '8k')       return 1.1;
   }
-
   return 1.0;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Cross-signal corroboration
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function crossSignalCorroboration(
   hasVerifiedXBRL: boolean,
-  hasConfirmed8K:  boolean,
-  tierABCount:     number,
+  hasConfirmed8K: boolean,
+  tierABCount: number,
 ): number {
   if (hasVerifiedXBRL && hasConfirmed8K && tierABCount >= 2) return 1.5;
   if (hasVerifiedXBRL && hasConfirmed8K)                     return 1.3;
@@ -130,34 +195,18 @@ export function crossSignalCorroboration(
   return 1.0;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Final score computation — v6.1 accepts phase + bankruptcy override
-// ─────────────────────────────────────────────────────────────────────────────
-
 export function computeScore(
-  rawTotal:         number,
-  state:            CompanyState,
-  signalAwaited:    boolean,
-  corroboration:    number,
-  phase?:           ProgrammePhase,
-  bankruptcy?:      BankruptcyFiling,
+  rawTotal: number,
+  state: string,
+  signalAwaited: boolean,
+  corroboration: number,
+  phase?: ProgrammePhase,
+  _bankruptcy?: BankruptcyFiling,  // v7: ignored (no hard override)
 ): number {
-  // v6.1: bankruptcy override first — forces floor
-  const bk = getBankruptcyOverride(bankruptcy);
-  if (bk) {
-    const phaseMult = getPhaseMultiplier(phase);
-    let adjusted = Math.round((rawTotal * corroboration * phaseMult / 130) * 100);
-    if (signalAwaited) adjusted = Math.round(adjusted * 0.85);
-    // Never go below bankruptcy floor — cap at 95 to leave headroom
-    return Math.min(95, Math.max(bk.floor, adjusted));
-  }
-
   const { floor, ceiling } = getStateBounds(state);
   const phaseMult = getPhaseMultiplier(phase);
-
   let adjusted = Math.round((rawTotal * corroboration * phaseMult / 130) * 100);
   if (signalAwaited) adjusted = Math.round(adjusted * 0.85);
-
   return Math.min(ceiling, Math.max(floor, adjusted));
 }
 
@@ -165,24 +214,6 @@ export function normaliseScore(rawTotal: number, signalAwaited: boolean): number
   let score = Math.round((rawTotal / 130) * 100);
   if (signalAwaited) score = Math.round(score * 0.85);
   return Math.min(100, Math.max(0, score));
-}
-
-export function getBand(score: number): RiskBand {
-  if (score >= 65) return 'HIGH';
-  if (score >= 40) return 'MEDIUM';
-  return 'LOW';
-}
-
-export function getConfidence(
-  fullyEligible:  boolean,
-  signalAwaited:  boolean,
-  score:          number,
-): Confidence {
-  if (signalAwaited)     return 'signal_awaited';
-  if (!fullyEligible)    return 'low';
-  if (score >= 65)       return 'high';
-  if (score >= 40)       return 'medium';
-  return 'low';
 }
 
 export function temporalWeight(filingDateStr?: string): number {
@@ -197,7 +228,7 @@ export function temporalWeight(filingDateStr?: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Legacy exports (preserved)
+// Legacy constants — preserved (referenced by v5 fallback in earnings.ts etc.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const SOURCE_MULTIPLIERS: Record<string, number> = {
@@ -221,7 +252,7 @@ export const EARNINGS_TIER_POINTS: Record<string, number> = {
   tier_1: 18, tier_2: 14, tier_3: 9, tier_4: 4,
 };
 
-export const TOTAL_MAX           = 130;
+export const TOTAL_MAX = 130;
 export const SIGNAL_AWAITED_MULT = 0.85;
 
 export function corroborationMultiplier(tierABCount: number): number {

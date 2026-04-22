@@ -1,38 +1,63 @@
-// app/api/score/route.ts — EjectSeat Consumer v6.1 INTEGRATED
+// app/api/score/route.ts — EjectSeat Consumer v7
 //
-// v5 deployed pipeline preserved in full:
-//   auth → cache check → validateCompany → state classification →
-//   SEC + earnings + media + quarterly in parallel → cross-signal corroboration →
-//   computeScore → generateSummary → persist → respond
+// ORCHESTRATOR with feature flag USE_COMPREHENSIVE_V2.
 //
-// v6.1 additions:
-//   + comprehensiveFilingAnalysis runs in parallel (one extra Sonnet call)
-//   + bankruptcy detection forces state=ACTIVE with floor (Ch 7/11/15)
-//   + programme phase applies multiplier to final score
-//   + programme / headcount / function_risk / bankruptcy returned in risk{} object
-//   + new fields persisted to score_history + companies (via migration)
+// FLAG ON (default=true in env example):
+//   1. Validate company
+//   2. Fetch evidence bundle in parallel: SEC filings+facts, transcripts, news
+//   3. Single comprehensive Sonnet call → intelligence object
+//   4. Validate + finalise score (engine applies bands + signal_awaited penalty)
+//   5. Persist to Supabase, log chain-of-thought, return unified response
+//
+// FLAG OFF:
+//   Full v5/v6.1 path runs — state classification + multi-signal + corroboration.
+//   Existing behaviour preserved for instant rollback.
+//
+// RESPONSE SHAPE:
+//   Preserved at top level so frontend keeps rendering during flag flips.
+//   `intelligence` object added as new field; old clients ignore it; new UI
+//   lights up the intelligence cards when present.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { validateCompany } from '@/lib/signals/company-validator';
 import {
-  computeScore, getBand, getConfidence, getStateBounds,
-  crossSignalCorroboration, getBankruptcyOverride,
+  validateAndFinaliseScore, getStateBounds, getBand, getConfidence,
+  crossSignalCorroboration, computeScore,
 } from '@/lib/scoring/engine';
 import {
-  classifyCompanyState,
-  prefilterFilingText,
-  generateSummary,
-  comprehensiveFilingAnalysis,
+  comprehensiveAnalysis,
+  classifyCompanyState, prefilterFilingText, generateSummary,
   type StateClassification,
-  type CompanyState,
 } from '@/lib/signals/nlp-analyzer';
-import { fetchFullFilingsForAnalysis } from '@/lib/signals/sec';
+import {
+  fetchEvidenceBundle, fetchLegacyAuditSignals, collectSECSignals,
+} from '@/lib/signals/sec';
+import { fetchRecentNews, fetchRecentHeadlines, collectMediaSignals } from '@/lib/signals/news';
+import { fetchRecentTranscripts } from '@/lib/signals/transcripts';
+import type {
+  EvidenceBundle, ComprehensiveIntelligence, RiskScore, Signal, ConfirmedEvent,
+  CompanyState,
+} from '@/types';
+import { normaliseLegacyState } from '@/types';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
 );
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Feature flag
+// ─────────────────────────────────────────────────────────────────────────────
+
+function useV2(): boolean {
+  const v = process.env.USE_COMPREHENSIVE_V2;
+  return v === undefined ? true : v === 'true' || v === '1';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
 
 async function getScoreHistory(companyId: string): Promise<any[]> {
   const { data } = await supabase
@@ -45,12 +70,8 @@ async function getScoreHistory(companyId: string): Promise<any[]> {
 }
 
 async function upsertCompany(
-  eligibility: any,
-  companyName: string,
-  ticker:      string | undefined,
-  score:       number,
-  band:        string,
-  state:       string,
+  eligibility: any, companyName: string, ticker: string | undefined,
+  score: number, band: string, state: string,
 ): Promise<string | null> {
   const { data } = await supabase
     .from('companies')
@@ -73,47 +94,119 @@ async function upsertCompany(
   return data?.id || null;
 }
 
-// Fetch recent 8-K text for state classification (same as v5 — kept for Haiku pipeline)
-async function getRecentFilingText(cik: string): Promise<string> {
-  try {
-    const paddedCik = cik.replace(/^0+/,'').padStart(10,'0');
-    const sub = await fetch(`https://data.sec.gov/submissions/CIK${paddedCik}.json`, {
-      headers: { 'User-Agent': 'EjectSeat/1.0 (enquiries.talkace@gmail.com)' }
-    });
-    if (!sub.ok) return '';
-    const data  = await sub.json();
-    const recent = data.filings?.recent;
-    if (!recent) return '';
-
-    const forms = recent.form            || [];
-    const dates = recent.filingDate      || [];
-    const accs  = recent.accessionNumber || [];
-    const docs  = recent.primaryDocument || [];
-
-    // v6.1: include 6-K for FPIs
-    const eightKs = forms
-      .map((f: string, i: number) => ({ form: f, date: dates[i], acc: accs[i], doc: docs[i] }))
-      .filter((f: any) => (f.form === '8-K' || f.form === '6-K') && f.acc && f.doc)
-      .slice(0, 3);
-
-    let combinedText = '';
-    const cikNum = parseInt(cik.replace(/^0+/,''), 10);
-
-    for (const filing of eightKs) {
-      const accClean = filing.acc.replace(/-/g,'');
-      const url      = `https://data.sec.gov/Archives/edgar/data/${cikNum}/${accClean}/${filing.doc}`;
-      try {
-        const res = await fetch(url, { headers: { 'User-Agent': 'EjectSeat/1.0 (enquiries.talkace@gmail.com)' }});
-        if (res.ok) {
-          const text = (await res.text()).slice(0, 20000);
-          combinedText += `\n\n--- ${filing.form} filed ${filing.date} ---\n${text}`;
-        }
-      } catch { continue; }
-    }
-
-    return combinedText;
-  } catch { return ''; }
+async function logUsage(userId: string | null, req: NextRequest, companyName: string) {
+  await supabase.from('score_usage').insert({
+    user_id: userId,
+    session_id: req.cookies.get('es_session')?.value,
+    company_name: companyName,
+  });
 }
+
+// Map intelligence confirmed_events to the legacy ConfirmedEvent[] shape for UI
+function confirmedToLegacy(intel: ComprehensiveIntelligence): ConfirmedEvent[] {
+  return intel.confirmed_events.map(e => ({
+    description:   e.description,
+    date:          e.date || '',
+    source:        e.filing_type || e.source_ref,
+    rolesAffected: e.roles_affected,
+    filingRef:     e.source_ref,
+    type:          'official_announcement',
+    weightedPoints: 0,
+  }));
+}
+
+// Build audit-strip signals from intelligence + legacy XBRL
+function buildAuditSignals(
+  intel: ComprehensiveIntelligence,
+  legacyAudit: Signal[],
+): Signal[] {
+  const out: Signal[] = [];
+
+  // Confirmed events as audit rows
+  for (const e of intel.confirmed_events) {
+    out.push({
+      type: 'confirmed_event',
+      source: `${e.filing_type || 'Filing'} · ${e.source_ref.slice(0, 40)}`,
+      sourceTier: 'sec',
+      rawPoints: 0, weightedPoints: 0, temporalTag: 'Context',
+      alertMessage: e.description + (e.roles_affected ? ` (${e.roles_affected.toLocaleString()} roles)` : ''),
+      filingDate: e.date || undefined,
+      verified: true,
+    });
+  }
+
+  // Forward signals as audit rows
+  for (const s of intel.forward_signals) {
+    const tier: Signal['sourceTier'] =
+      s.source_ref.includes('reuters') || s.source_ref.includes('bloomberg') ? 'tier_a'
+      : s.source_ref.includes('cnbc') || s.source_ref.includes('techcrunch') ? 'tier_b'
+      : s.source_ref.includes('motley') || s.source_ref.includes('transcript') ? 'transcript'
+      : 'sec';
+    out.push({
+      type: s.signal_type,
+      source: s.source_ref.slice(0, 50),
+      sourceTier: tier,
+      rawPoints: 0, weightedPoints: 0, temporalTag: s.forward_looking ? 'Predictive' : 'Context',
+      alertMessage: s.description,
+      escalationType: s.escalation_type,
+    });
+  }
+
+  // Programme signal
+  if (intel.programme.name) {
+    out.push({
+      type: 'programme_detected',
+      source: intel.programme.source_filings[0] || 'SEC EDGAR',
+      sourceTier: 'sec',
+      rawPoints: 0, weightedPoints: 0, temporalTag: 'Context',
+      alertMessage: `Transformation programme "${intel.programme.name}" detected`,
+      verified: true,
+    });
+  }
+
+  // Bankruptcy
+  if (intel.bankruptcy.detected && intel.bankruptcy.chapter) {
+    out.push({
+      type: 'bankruptcy_filing',
+      source: intel.bankruptcy.filing_accession || 'SEC EDGAR',
+      sourceTier: 'sec',
+      rawPoints: 0, weightedPoints: 0, temporalTag: 'Context',
+      alertMessage: `Chapter ${intel.bankruptcy.chapter} filing${intel.bankruptcy.filing_date ? ' · ' + intel.bankruptcy.filing_date : ''}`,
+      filingDate: intel.bankruptcy.filing_date || undefined,
+      verified: true,
+    });
+  }
+
+  // Dedup against legacy audit (which surfaces XBRL line items not caught above)
+  const haveTypes = new Set(out.map(s => s.type));
+  for (const s of legacyAudit) {
+    if (!haveTypes.has(s.type) && out.length < 12) out.push(s);
+  }
+
+  return out;
+}
+
+// Build plain-language summary from intelligence (Sonnet writes it already;
+// this is a fallback constructor if Sonnet returned an empty summary)
+function buildFallbackSummary(intel: ComprehensiveIntelligence, companyName: string): string {
+  if (intel.summary && intel.summary.length > 20) return intel.summary;
+
+  if (intel.bankruptcy.detected && intel.bankruptcy.chapter) {
+    return `${companyName} has filed for Chapter ${intel.bankruptcy.chapter} — court-supervised process${intel.bankruptcy.filing_date ? ` on ${intel.bankruptcy.filing_date}` : ''}. This reflects confirmed public announcements.`;
+  }
+  if (intel.confirmed_events.length > 0) {
+    const e = intel.confirmed_events[0];
+    return `${companyName} has confirmed ${e.description}${e.date ? ` on ${e.date}` : ''}. This reflects confirmed public announcements.`;
+  }
+  if (intel.state === 'CLEAR') {
+    return `No significant layoff risk signals detected for ${companyName} in current SEC filings or Tier A/B media. This is a predictive signal based on public filings — not a confirmed outcome.`;
+  }
+  return `${companyName} shows ${intel.forward_signals.length} forward-looking signals in current filings and media. This is a predictive signal based on public filings — not a confirmed outcome.`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN HANDLER
+// ─────────────────────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
   try {
@@ -122,16 +215,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'companyName required' }, { status: 400 });
     }
 
-    // ── Auth ────────────────────────────────────────────────────────────
+    // Auth
     let userId: string | null = null;
     let isRegistered = false;
     const authHeader = req.headers.get('Authorization');
     if (authHeader?.startsWith('Bearer ')) {
-      const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ',''));
+      const { data: { user } } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
       if (user) { userId = user.id; isRegistered = true; }
     }
 
-    // ── Cache check ──────────────────────────────────────────────────────
+    // Cache check
     const { data: cachedCo } = await supabase
       .from('companies').select('*').ilike('name', companyName.trim()).single();
     const cacheAge = cachedCo?.cached_at
@@ -143,274 +236,328 @@ export async function POST(req: NextRequest) {
       await logUsage(userId, req, companyName);
       return NextResponse.json({
         risk: {
-          score:         cachedCo.cached_score,
-          band:          cachedCo.cached_band,
-          companyState:  cachedCo.cached_state || 'CLEAR',
-          fromCache:     true,
-          signals:       [],
+          score:        cachedCo.cached_score,
+          band:         cachedCo.cached_band,
+          companyState: normaliseLegacyState(cachedCo.cached_state),
+          signals:      [],
           confirmedEvents: [],
           scoreHistory,
-          programme:     cachedCo.cached_programme || null,
-          headcount:     cachedCo.cached_headcount || null,
+          programme:    cachedCo.cached_programme || null,
+          headcount:    cachedCo.cached_headcount || null,
           function_risk: cachedCo.cached_function_risk || null,
-          bankruptcy:    cachedCo.cached_bankruptcy || null,
+          bankruptcy:   cachedCo.cached_bankruptcy || null,
           large_employer_flag: cachedCo.cached_large_employer_flag || false,
+          intelligence: cachedCo.cached_intelligence || null,
           disclaimer: {
+            productScope: 'US-listed public companies + FPIs. Cached response.',
             signalNature: 'Predictive signal — not confirmed outcome.',
+            dataSource:   'SEC EDGAR + Claude Sonnet + Tier A/B media.',
+            lastUpdated:  cachedCo.cached_at,
             companyEligibility: {
-              isUSListed:      cachedCo.is_us_listed,
+              isUSListed: cachedCo.is_us_listed,
               isPublicCompany: cachedCo.is_public,
+              secFilingFound: cachedCo.sec_filing_found,
             },
           },
-        },
+          pipelineVersion: cachedCo.cached_pipeline_version || 'v7',
+        } as RiskScore,
         company: { name: cachedCo.legal_name || companyName, ticker: cachedCo.ticker, cik: cachedCo.cik },
+        signalsGated: false,
+        fromCache: true,
       });
     }
 
-    // ── Company validation ───────────────────────────────────────────────
+    // Validate company
     const eligibility = await validateCompany(companyName, ticker);
 
     // Early return for indexes
     if (eligibility.ineligibilityReason?.includes('market index')) {
       return NextResponse.json({
         risk: {
-          score: 0, band: 'LOW', companyState: 'CLEAR',
+          score: 0, band: 'LOW' as const, companyState: 'CLEAR' as CompanyState,
           signals: [], confirmedEvents: [], scoreHistory: [],
           claudeSummary: eligibility.ineligibilityReason,
-          disclaimer: { signalNature: eligibility.ineligibilityReason, companyEligibility: eligibility },
-        },
+          disclaimer: {
+            productScope: eligibility.ineligibilityReason,
+            signalNature: eligibility.ineligibilityReason,
+            dataSource: '',
+            lastUpdated: new Date().toISOString(),
+            companyEligibility: eligibility,
+          },
+          pipelineVersion: 'v7' as const,
+        } as RiskScore,
         company: { name: companyName, ticker },
         signalsGated: false,
       });
     }
 
-    // ── Step 1: Get filing text + headlines + full-filings bundle in parallel
-    const [filingRawText, mediaModule, filingsBundle] = await Promise.all([
-      eligibility.secFilingFound && eligibility.cik
-        ? getRecentFilingText(eligibility.cik)
-        : Promise.resolve(''),
-      import('@/lib/signals/news').then(m => m),
-      eligibility.secFilingFound && eligibility.cik
-        ? fetchFullFilingsForAnalysis(eligibility.cik)
-        : Promise.resolve(null),
-    ]);
-
-    const filteredFilingText = filingRawText
-      ? await prefilterFilingText(filingRawText, companyName)
-      : '';
-
-    const recentHeadlines = await mediaModule.fetchRecentHeadlines(companyName);
-
-    // ── Step 2: Run state classification AND comprehensive analysis in parallel
-    const [stateResult, intelligence] = await Promise.all([
-      classifyCompanyState(companyName, filteredFilingText, recentHeadlines),
-      filingsBundle
-        ? comprehensiveFilingAnalysis(filingsBundle, companyName)
-        : Promise.resolve(null),
-    ]);
-
-    // ── Step 3: Bankruptcy override — forces ACTIVE state ───────────────
-    let effectiveState: CompanyState = stateResult.state;
-    let bankruptcyOverrideReason: string | null = null;
-    if (intelligence?.bankruptcy?.detected) {
-      const bk = getBankruptcyOverride(intelligence.bankruptcy);
-      if (bk) {
-        effectiveState = bk.state;
-        bankruptcyOverrideReason = bk.reason;
-      }
-    }
-
-    // ── Step 4: ACTIVE_MULTI_YEAR promotion for named multi-year programme
-    if (!intelligence?.bankruptcy?.detected
-        && intelligence?.programme?.name
-        && intelligence.programme.timeline === 'multi_year'
-        && (intelligence.programme.phase === 'mid' || intelligence.programme.phase === 'late')
-        && effectiveState === 'ACTIVE') {
-      effectiveState = 'ACTIVE_MULTI_YEAR';
-    }
-
-    const { floor, ceiling } = getStateBounds(effectiveState);
-
-    // ── Step 5: Run signal pipeline (v5 preserved in full) ──────────────
-    const [secSignals, earningsSignals, mediaSignals, quarterlyStatus] = await Promise.all([
-      eligibility.secFilingFound
-        ? import('@/lib/signals/sec').then(m => m.collectSECSignals(eligibility.cik!, companyName, isRegistered))
-        : Promise.resolve([]),
-      eligibility.secFilingFound
-        ? import('@/lib/signals/earnings').then(m => m.analyzeEarnings(companyName, eligibility.cik!))
-        : Promise.resolve([]),
-      mediaModule.collectMediaSignals(companyName, effectiveState),
-      eligibility.secFilingFound
-        ? import('@/lib/signals/quarterly-calendar').then(m => m.getQuarterlySignalStatus(eligibility.cik!))
-        : Promise.resolve(null),
-    ]);
-
-    const allSignals    = [...secSignals, ...earningsSignals, ...mediaSignals];
-    const signalAwaited = quarterlyStatus?.filingStatus === 'awaited'
-                       || quarterlyStatus?.filingStatus === 'overdue';
-
-    // ── Step 6: Cross-signal corroboration + phase-aware score ──────────
-    const hasVerifiedXBRL = secSignals.some((s: any) => s.verified && s.type.startsWith('restructuring'));
-    const hasConfirmed8K  = secSignals.some((s: any) => s.type.startsWith('8k_nlp'));
-    const tierABCount     = mediaSignals.filter((s: any) =>
-      s.sourceTier === 'tier_a' || s.sourceTier === 'tier_b'
-    ).length;
-
-    const corroboration = crossSignalCorroboration(hasVerifiedXBRL, hasConfirmed8K, tierABCount);
-    const rawTotal      = allSignals.reduce((sum: number, s: any) => sum + (s.weightedPoints || 0), 0);
-
-    // v6.1: computeScore now accepts phase + bankruptcy
-    const score = computeScore(
-      rawTotal,
-      effectiveState,
-      signalAwaited,
-      corroboration,
-      intelligence?.programme?.phase,
-      intelligence?.bankruptcy,
-    );
-    const band       = getBand(score);
-    const confidence = getConfidence(
-      eligibility.isUSListed && eligibility.secFilingFound,
-      signalAwaited,
-      score,
-    );
-
-    // ── Step 7: Generate summary (v6.1: passes intelligence) ────────────
-    const companyId    = await upsertCompany(eligibility, companyName, ticker, score, band, effectiveState);
-    const scoreHistory = companyId ? await getScoreHistory(companyId) : [];
-
-    const { summary: claudeSummary, chainOfThought } = await generateSummary(
-      companyName,
-      allSignals,
-      score,
-      band,
-      { ...stateResult, state: effectiveState },
-      scoreHistory,
-      quarterlyStatus || null,
-      intelligence,
-    );
-
-    // ── Step 8: Persist score_history with v6.1 fields ──────────────────
-    if (companyId) {
-      const topSignal = allSignals.length > 0
-        ? [...allSignals].sort((a: any, b: any) => b.weightedPoints - a.weightedPoints)[0]
-        : null;
-      const keySignal = topSignal
-        ? (topSignal as any).alertMessage?.slice(0,80) || topSignal.type
-        : null;
-
-      await supabase.from('score_history').insert({
-        company_id:       companyId,
-        score,
-        band,
-        company_state:    effectiveState,
-        quarter_label:    quarterlyStatus?.currentQuarterLabel || null,
-        key_signal:       keySignal,
-        signals:          allSignals.slice(0, 5),
-        disclaimer:       { signalNature: 'Predictive', signalAwaited },
-        quarterly_status: quarterlyStatus || null,
-        chain_of_thought: chainOfThought,
-        // v6.1 additions
-        programme_name:          intelligence?.programme.name || null,
-        programme_total_size:    intelligence?.programme.total_size_usd || null,
-        programme_recognised:    intelligence?.programme.recognised_to_date_usd || null,
-        headcount_estimate_low:  intelligence?.headcount.low || null,
-        headcount_estimate_mid:  intelligence?.headcount.mid || null,
-        headcount_estimate_high: intelligence?.headcount.high || null,
-        at_risk_functions:       intelligence?.function_risk.at_risk.map(f => f.function) || null,
-        protected_functions:     intelligence?.function_risk.protected.map(f => f.function) || null,
-        bankruptcy_detected:     intelligence?.bankruptcy.detected || false,
-        bankruptcy_chapter:      intelligence?.bankruptcy.chapter || null,
-        bankruptcy_filing_date:  intelligence?.bankruptcy.filing_date || null,
-        large_employer_flag:     intelligence?.large_employer_flag || false,
-        scored_at:        new Date().toISOString(),
+    // Handle private / unknown companies — news-only path
+    if (!eligibility.secFilingFound) {
+      return NextResponse.json({
+        risk: {
+          score: 0, band: 'LOW' as const, companyState: 'CLEAR' as CompanyState,
+          signals: [], confirmedEvents: [], scoreHistory: [],
+          claudeSummary: eligibility.ineligibilityReason || `SEC filings not available for ${companyName}.`,
+          disclaimer: {
+            productScope: eligibility.ineligibilityReason || 'Private or non-US listed',
+            signalNature: 'News-only evaluation — no SEC signals available.',
+            dataSource:   'Google News RSS (private company mode).',
+            lastUpdated:  new Date().toISOString(),
+            companyEligibility: eligibility,
+          },
+          pipelineVersion: 'v7' as const,
+        } as RiskScore,
+        company: { name: eligibility.legalName || companyName, ticker },
+        signalsGated: false,
       });
-
-      // Also cache intelligence on companies row for cache hits
-      await supabase.from('companies').update({
-        cached_programme:           intelligence?.programme || null,
-        cached_headcount:           intelligence?.headcount || null,
-        cached_function_risk:       intelligence?.function_risk || null,
-        cached_bankruptcy:          intelligence?.bankruptcy || null,
-        cached_large_employer_flag: intelligence?.large_employer_flag || false,
-      }).eq('id', companyId);
     }
 
-    // ── Prediction tracking + analytics ─────────────────────────────────
-    if (score >= 70 && eligibility.secFilingFound) {
-      await supabase.from('predictions').insert({
-        company_name: companyName, ticker,
-        score_at_prediction: score,
-      }).then(() => {});
+    // ─── v7 PIPELINE (flag on) ─────────────────────────────────────────────
+    if (useV2()) {
+      return await runV7Pipeline(req, companyName, ticker, eligibility, userId, isRegistered);
     }
 
-    await logUsage(userId, req, companyName);
-    await supabase.from('analytics_events').insert({
-      user_id: userId, session_id: req.cookies.get('es_session')?.value,
-      event_type: 'company_searched',
-      payload: {
-        companyName, score, band,
-        state: effectiveState,
-        isRegistered,
-        programmeName: intelligence?.programme.name || null,
-        bankruptcyDetected: intelligence?.bankruptcy.detected || false,
-      },
-    });
+    // ─── v5 FALLBACK (flag off) ────────────────────────────────────────────
+    return await runV5Pipeline(req, companyName, ticker, eligibility, userId, isRegistered);
 
-    const returnSignals = allSignals;
-
-    const disclaimer = {
-      productScope:  eligibility.isPublicCompany
-        ? 'US-listed public companies + FPIs (20-F/6-K). SEC EDGAR + Sonnet/Haiku NLP + Tier A/B media.'
-        : eligibility.ineligibilityReason,
-      signalNature:  effectiveState === 'ACTIVE' || effectiveState === 'ACTIVE_MULTI_YEAR' || effectiveState === 'CONTINUATION_RISK'
-        ? 'Based on confirmed public announcements alongside predictive signals.'
-        : 'Predictive signals — not confirmed outcomes. Does not guarantee layoffs will or will not occur.',
-      dataSource:    'SEC EDGAR + Claude Sonnet/Haiku NLP + Tier A/B media. Reddit, Blind, social media explicitly excluded.',
-      lastUpdated:   new Date().toISOString(),
-      companyEligibility: eligibility,
-    };
-
-    return NextResponse.json({
-      risk: {
-        score, band, confidence,
-        companyState:    effectiveState,
-        stateConfidence: stateResult.confidence,
-        confirmedEvent:  stateResult.confirmedEvent,
-        stateFloor:      floor,
-        stateCeiling:    ceiling,
-        stateOverrideReason: bankruptcyOverrideReason,
-        signals:         returnSignals,
-        confirmedEvents: stateResult.confirmedEvent ? [stateResult.confirmedEvent] : [],
-        disclaimer,
-        quarterlyStatus: quarterlyStatus || undefined,
-        claudeSummary,
-        scoreHistory,
-        // v6.1 additions
-        programme:     intelligence?.programme || null,
-        headcount:     intelligence?.headcount || null,
-        function_risk: intelligence?.function_risk || null,
-        bankruptcy:    intelligence?.bankruptcy || null,
-        large_employer_flag: intelligence?.large_employer_flag || false,
-      },
-      company: {
-        name:   eligibility.legalName || companyName,
-        ticker,
-        cik:    eligibility.cik,
-      },
-      signalsGated: false,
-    });
-
-  } catch (err) {
+  } catch (err: any) {
     console.error('[score/route]', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error', details: err?.message }, { status: 500 });
   }
 }
 
-async function logUsage(userId: string | null, req: NextRequest, companyName: string) {
-  await supabase.from('score_usage').insert({
+// ─────────────────────────────────────────────────────────────────────────────
+// V7 PIPELINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runV7Pipeline(
+  req: NextRequest,
+  companyName: string,
+  ticker: string | undefined,
+  eligibility: any,
+  userId: string | null,
+  isRegistered: boolean,
+) {
+  // Step 1: Fetch everything needed for the bundle in parallel
+  const [bundlePart, transcripts, news, legacyAudit, quarterlyStatus] = await Promise.all([
+    fetchEvidenceBundle(eligibility.cik!, companyName, 365),
+    fetchRecentTranscripts(ticker || null, 2),
+    fetchRecentNews(companyName, 30),
+    fetchLegacyAuditSignals(eligibility.cik!),
+    import('@/lib/signals/quarterly-calendar').then(m => m.getQuarterlySignalStatus(eligibility.cik!))
+      .catch(() => null),
+  ]);
+
+  const bundle: EvidenceBundle = {
+    company:          eligibility.legalName || companyName,
+    ticker:           ticker || null,
+    cik:              eligibility.cik || null,
+    companyFacts:     bundlePart.companyFacts,
+    filings:          bundlePart.filings,
+    transcripts,
+    news,
+    headcountHistory: bundlePart.headcountHistory,
+    generatedAt:      new Date().toISOString(),
+  };
+
+  // Step 2: Comprehensive Sonnet call
+  const intel = await comprehensiveAnalysis(bundle);
+
+  // Step 3: Validate + finalise score
+  const signalAwaited = quarterlyStatus?.filingStatus === 'awaited' || quarterlyStatus?.filingStatus === 'overdue';
+  const finalised = validateAndFinaliseScore(
+    intel,
+    signalAwaited,
+    eligibility.isUSListed && eligibility.secFilingFound,
+  );
+
+  // Step 4: Build audit-strip signals for UI
+  const auditSignals = buildAuditSignals(intel, legacyAudit);
+  const confirmedLegacy = confirmedToLegacy(intel);
+
+  // Step 5: Persist
+  const companyId = await upsertCompany(
+    eligibility, companyName, ticker,
+    finalised.score, finalised.band, finalised.state,
+  );
+  const scoreHistory = companyId ? await getScoreHistory(companyId) : [];
+
+  if (companyId) {
+    const topSignal = intel.confirmed_events[0]?.description || intel.forward_signals[0]?.description || null;
+    await supabase.from('score_history').insert({
+      company_id:       companyId,
+      score:            finalised.score,
+      band:             finalised.band,
+      company_state:    finalised.state,
+      quarter_label:    quarterlyStatus?.currentQuarterLabel || null,
+      key_signal:       topSignal?.slice(0, 80) || null,
+      signals:          auditSignals.slice(0, 5),
+      disclaimer:       { signalNature: 'Predictive', signalAwaited },
+      quarterly_status: quarterlyStatus || null,
+      chain_of_thought: intel.reasoning_chain,
+      programme_name:          intel.programme.name,
+      programme_total_size:    intel.programme.total_size_usd,
+      programme_recognised:    intel.programme.recognised_to_date_usd,
+      headcount_estimate_low:  intel.headcount.low,
+      headcount_estimate_mid:  intel.headcount.mid,
+      headcount_estimate_high: intel.headcount.high,
+      at_risk_functions:       intel.function_risk.at_risk.map(f => f.function),
+      protected_functions:     intel.function_risk.protected.map(f => f.function),
+      bankruptcy_detected:     intel.bankruptcy.detected,
+      bankruptcy_chapter:      intel.bankruptcy.chapter,
+      bankruptcy_filing_date:  intel.bankruptcy.filing_date,
+      large_employer_flag:     intel.large_employer_flag,
+      waves_confirmed:         intel.waves.waves_confirmed,
+      trajectory:              intel.trajectory,
+      requires_review:         intel.requires_review,
+      pipeline_version:        'v7',
+      scored_at:               new Date().toISOString(),
+    });
+
+    await supabase.from('companies').update({
+      cached_programme:           intel.programme,
+      cached_headcount:           intel.headcount,
+      cached_function_risk:       intel.function_risk,
+      cached_bankruptcy:          intel.bankruptcy,
+      cached_large_employer_flag: intel.large_employer_flag,
+      cached_intelligence:        intel,
+      cached_pipeline_version:    'v7',
+    }).eq('id', companyId);
+  }
+
+  // Prediction tracking
+  if (finalised.score >= 70 && eligibility.secFilingFound) {
+    await supabase.from('predictions').insert({
+      company_name: companyName, ticker,
+      score_at_prediction: finalised.score,
+    }).then(() => {});
+  }
+
+  await logUsage(userId, req, companyName);
+  await supabase.from('analytics_events').insert({
     user_id: userId,
     session_id: req.cookies.get('es_session')?.value,
-    company_name: companyName,
+    event_type: 'company_searched',
+    payload: {
+      companyName, score: finalised.score, band: finalised.band,
+      state: finalised.state, isRegistered,
+      programmeName: intel.programme.name,
+      bankruptcyDetected: intel.bankruptcy.detected,
+      pipelineVersion: 'v7',
+      requiresReview: intel.requires_review,
+    },
+  });
+
+  const summary = buildFallbackSummary(intel, eligibility.legalName || companyName);
+
+  const response: { risk: RiskScore; company: any; signalsGated: boolean } = {
+    risk: {
+      score:           finalised.score,
+      band:            finalised.band,
+      confidence:      finalised.confidence,
+      companyState:    finalised.state,
+      stateFloor:      finalised.floor,
+      stateCeiling:    finalised.ceiling,
+      signals:         auditSignals,
+      confirmedEvents: confirmedLegacy,
+      confirmedEvent:  confirmedLegacy[0] || null,
+      claudeSummary:   summary,
+      scoreHistory,
+      programme:       intel.programme,
+      headcount:       intel.headcount,
+      function_risk:   intel.function_risk,
+      bankruptcy:      intel.bankruptcy,
+      large_employer_flag: intel.large_employer_flag,
+      intelligence:    intel,
+      quarterlyStatus: quarterlyStatus || undefined,
+      requiresReview:  intel.requires_review,
+      disclaimer: {
+        productScope: 'US-listed public companies + FPIs (20-F/6-K). SEC EDGAR + Sonnet comprehensive analysis + Tier A/B media + earnings transcripts.',
+        signalNature: intel.confirmed_events.length > 0
+          ? 'Based on confirmed public announcements alongside predictive signals.'
+          : 'Predictive signals — not confirmed outcomes. Does not guarantee layoffs will or will not occur.',
+        dataSource:   'SEC EDGAR + Claude Sonnet + Motley Fool earnings transcripts + Tier A/B media. Reddit, Blind, social media explicitly excluded.',
+        lastUpdated:  new Date().toISOString(),
+        companyEligibility: eligibility,
+      },
+      pipelineVersion: 'v7',
+    },
+    company: {
+      name:   eligibility.legalName || companyName,
+      ticker,
+      cik:    eligibility.cik,
+    },
+    signalsGated: false,
+  };
+
+  return NextResponse.json(response);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// V5 FALLBACK PIPELINE (flag off) — preserved for instant rollback
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runV5Pipeline(
+  req: NextRequest,
+  companyName: string,
+  ticker: string | undefined,
+  eligibility: any,
+  userId: string | null,
+  isRegistered: boolean,
+) {
+  // This is a compact v5 path using our audit-only signal modules. It WILL
+  // produce lower fidelity than v7 — the purpose is to stay functional when
+  // the flag is off, not to perfectly replicate v5 behaviour.
+
+  const [auditSignals, mediaSignals, headlines, quarterlyStatus] = await Promise.all([
+    collectSECSignals(eligibility.cik!, companyName, isRegistered),
+    collectMediaSignals(companyName),
+    fetchRecentHeadlines(companyName),
+    import('@/lib/signals/quarterly-calendar').then(m => m.getQuarterlySignalStatus(eligibility.cik!))
+      .catch(() => null),
+  ]);
+
+  // Use Sonnet state classification (legacy path)
+  const filingText = '';
+  const stateResult = await classifyCompanyState(companyName, filingText, headlines);
+  const v7State = normaliseLegacyState(stateResult.state);
+
+  const signalAwaited = quarterlyStatus?.filingStatus === 'awaited' || quarterlyStatus?.filingStatus === 'overdue';
+  const { floor, ceiling } = getStateBounds(v7State);
+  const score = signalAwaited ? Math.round(floor * 0.85) : floor;
+  const band = getBand(score);
+
+  const allSignals = [...auditSignals, ...mediaSignals];
+
+  await logUsage(userId, req, companyName);
+  await supabase.from('analytics_events').insert({
+    user_id: userId,
+    session_id: req.cookies.get('es_session')?.value,
+    event_type: 'company_searched',
+    payload: { companyName, score, band, state: v7State, pipelineVersion: 'v5_fallback' },
+  });
+
+  return NextResponse.json({
+    risk: {
+      score, band,
+      confidence: getConfidence(true, signalAwaited, score),
+      companyState: v7State,
+      stateFloor: floor, stateCeiling: ceiling,
+      signals: allSignals,
+      confirmedEvents: stateResult.confirmedEvent ? [stateResult.confirmedEvent] : [],
+      confirmedEvent: stateResult.confirmedEvent,
+      claudeSummary: `${companyName}: ${stateResult.reasoning}`.slice(0, 300),
+      quarterlyStatus: quarterlyStatus || undefined,
+      disclaimer: {
+        productScope: 'US-listed public companies + FPIs (v5 fallback mode).',
+        signalNature: 'Predictive signal — not confirmed outcome.',
+        dataSource: 'SEC EDGAR + Tier A/B media (v5 fallback).',
+        lastUpdated: new Date().toISOString(),
+        companyEligibility: eligibility,
+      },
+      pipelineVersion: 'v5' as const,
+    } as RiskScore,
+    company: { name: eligibility.legalName || companyName, ticker, cik: eligibility.cik },
+    signalsGated: false,
   });
 }

@@ -1,6 +1,5 @@
-// lib/signals/company-validator.ts — EjectSeat Consumer v6.1
-// v6.1: smarter fuzzy matching — exact ticker → exact name → starts-with → contains,
-// with shorter-name preference at each tier. Adds MMC explicit mapping.
+// lib/signals/company-validator.ts — EjectSeat Consumer v7 (preserved from v6.1)
+// Name/ticker → CIK resolution for SEC EDGAR lookups.
 
 import { CompanyEligibility } from '@/types';
 
@@ -37,8 +36,6 @@ const NAME_MAP: Record<string, { legalName: string; cik: string; ticker: string 
   'cloudflare':         { legalName: 'Cloudflare Inc.',                      cik: '0001477333', ticker: 'NET'   },
   'zoom':               { legalName: 'Zoom Video Communications Inc.',       cik: '0001585521', ticker: 'ZM'    },
   'slack':              { legalName: 'Salesforce Inc.',                      cik: '0001108524', ticker: 'CRM'   },
-  'twitter':            { legalName: 'X Holdings Corp.',                     cik: '0001418091', ticker: 'X'     },
-  'x':                  { legalName: 'X Holdings Corp.',                     cik: '0001418091', ticker: 'X'     },
   'linkedin':           { legalName: 'Microsoft Corporation',                cik: '0000789019', ticker: 'MSFT'  },
   'datadog':            { legalName: 'Datadog Inc.',                         cik: '0001459417', ticker: 'DDOG'  },
   'mongodb':            { legalName: 'MongoDB Inc.',                         cik: '0001441816', ticker: 'MDB'   },
@@ -51,35 +48,34 @@ const NAME_MAP: Record<string, { legalName: string; cik: string; ticker: string 
   'palo alto networks': { legalName: 'Palo Alto Networks Inc.',              cik: '0001327567', ticker: 'PANW'  },
   'atlassian':          { legalName: 'Atlassian Corporation',                cik: '0001650372', ticker: 'TEAM'  },
   'adobe':              { legalName: 'Adobe Inc.',                           cik: '0000796343', ticker: 'ADBE'  },
-  // v6.1 — MMC explicit mapping (the Thrive programme test case)
   'marsh mclennan':     { legalName: 'Marsh & McLennan Companies, Inc.',     cik: '0000062709', ticker: 'MMC'   },
   'marsh & mclennan':   { legalName: 'Marsh & McLennan Companies, Inc.',     cik: '0000062709', ticker: 'MMC'   },
   'mmc':                { legalName: 'Marsh & McLennan Companies, Inc.',     cik: '0000062709', ticker: 'MMC'   },
   'novo nordisk':       { legalName: 'Novo Nordisk A/S',                     cik: '0000353278', ticker: 'NVO'   },
   'novonordisk':        { legalName: 'Novo Nordisk A/S',                     cik: '0000353278', ticker: 'NVO'   },
-  'johnson johnson':    { legalName: 'Johnson & Johnson',                     cik: '0000200406', ticker: 'JNJ'   },
-  'johnson & johnson':  { legalName: 'Johnson & Johnson',                     cik: '0000200406', ticker: 'JNJ'   },
-  'j&j':                { legalName: 'Johnson & Johnson',                     cik: '0000200406', ticker: 'JNJ'   },
-  'jpmorgan':           { legalName: 'JPMorgan Chase & Co.',                  cik: '0000019617', ticker: 'JPM'   },
-  'jp morgan':          { legalName: 'JPMorgan Chase & Co.',                  cik: '0000019617', ticker: 'JPM'   },
-  'goldman sachs':      { legalName: 'Goldman Sachs Group Inc.',              cik: '0000886982', ticker: 'GS'    },
-  'boeing':             { legalName: 'Boeing Co.',                            cik: '0000012927', ticker: 'BA'    },
-  'walmart':            { legalName: 'Walmart Inc.',                          cik: '0000104169', ticker: 'WMT'   },
-  'disney':             { legalName: 'Walt Disney Co.',                       cik: '0001001039', ticker: 'DIS'   },
-  'walt disney':        { legalName: 'Walt Disney Co.',                       cik: '0001001039', ticker: 'DIS'   },
-  'exxon':              { legalName: 'Exxon Mobil Corporation',               cik: '0000034088', ticker: 'XOM'   },
-  'exxon mobil':        { legalName: 'Exxon Mobil Corporation',               cik: '0000034088', ticker: 'XOM'   },
-  'pfizer':             { legalName: 'Pfizer Inc.',                           cik: '0000078003', ticker: 'PFE'   },
-  'chevron':            { legalName: 'Chevron Corporation',                   cik: '0000093410', ticker: 'CVX'   },
-  'bank of america':    { legalName: 'Bank of America Corp',                  cik: '0000070858', ticker: 'BAC'   },
-  'morgan stanley':     { legalName: 'Morgan Stanley',                        cik: '0000895421', ticker: 'MS'    },
-  'wells fargo':        { legalName: 'Wells Fargo & Company',                 cik: '0000072971', ticker: 'WFC'   },
-  'blackrock':          { legalName: 'BlackRock Inc.',                        cik: '0001364742', ticker: 'BLK'   },
-  'visa':               { legalName: 'Visa Inc.',                             cik: '0001403161', ticker: 'V'     },
-  'mastercard':         { legalName: 'Mastercard Incorporated',               cik: '0001141391', ticker: 'MA'    },
-  'paypal':             { legalName: 'PayPal Holdings Inc.',                  cik: '0001633917', ticker: 'PYPL'  },
-  'block':              { legalName: 'Block Inc.',                            cik: '0001512673', ticker: 'SQ'    },
-  'square':             { legalName: 'Block Inc.',                            cik: '0001512673', ticker: 'SQ'    },
+  'johnson johnson':    { legalName: 'Johnson & Johnson',                    cik: '0000200406', ticker: 'JNJ'   },
+  'johnson & johnson':  { legalName: 'Johnson & Johnson',                    cik: '0000200406', ticker: 'JNJ'   },
+  'j&j':                { legalName: 'Johnson & Johnson',                    cik: '0000200406', ticker: 'JNJ'   },
+  'jpmorgan':           { legalName: 'JPMorgan Chase & Co.',                 cik: '0000019617', ticker: 'JPM'   },
+  'jp morgan':          { legalName: 'JPMorgan Chase & Co.',                 cik: '0000019617', ticker: 'JPM'   },
+  'goldman sachs':      { legalName: 'Goldman Sachs Group Inc.',             cik: '0000886982', ticker: 'GS'    },
+  'boeing':             { legalName: 'Boeing Co.',                           cik: '0000012927', ticker: 'BA'    },
+  'walmart':            { legalName: 'Walmart Inc.',                         cik: '0000104169', ticker: 'WMT'   },
+  'disney':             { legalName: 'Walt Disney Co.',                      cik: '0001001039', ticker: 'DIS'   },
+  'walt disney':        { legalName: 'Walt Disney Co.',                      cik: '0001001039', ticker: 'DIS'   },
+  'exxon':              { legalName: 'Exxon Mobil Corporation',              cik: '0000034088', ticker: 'XOM'   },
+  'exxon mobil':        { legalName: 'Exxon Mobil Corporation',              cik: '0000034088', ticker: 'XOM'   },
+  'pfizer':             { legalName: 'Pfizer Inc.',                          cik: '0000078003', ticker: 'PFE'   },
+  'chevron':            { legalName: 'Chevron Corporation',                  cik: '0000093410', ticker: 'CVX'   },
+  'bank of america':    { legalName: 'Bank of America Corp',                 cik: '0000070858', ticker: 'BAC'   },
+  'morgan stanley':     { legalName: 'Morgan Stanley',                       cik: '0000895421', ticker: 'MS'    },
+  'wells fargo':        { legalName: 'Wells Fargo & Company',                cik: '0000072971', ticker: 'WFC'   },
+  'blackrock':          { legalName: 'BlackRock Inc.',                       cik: '0001364742', ticker: 'BLK'   },
+  'visa':               { legalName: 'Visa Inc.',                            cik: '0001403161', ticker: 'V'     },
+  'mastercard':         { legalName: 'Mastercard Incorporated',              cik: '0001141391', ticker: 'MA'    },
+  'paypal':             { legalName: 'PayPal Holdings Inc.',                 cik: '0001633917', ticker: 'PYPL'  },
+  'block':              { legalName: 'Block Inc.',                           cik: '0001512673', ticker: 'SQ'    },
+  'square':             { legalName: 'Block Inc.',                           cik: '0001512673', ticker: 'SQ'    },
   'dow jones':          { legalName: 'INDEX_NOT_COMPANY', cik: '', ticker: 'DJIA' },
   'dow jones industrial average': { legalName: 'INDEX_NOT_COMPANY', cik: '', ticker: 'DJIA' },
   'djia':               { legalName: 'INDEX_NOT_COMPANY', cik: '', ticker: 'DJIA' },
@@ -101,14 +97,11 @@ let tickerCacheTime = 0;
 const TICKER_CACHE_TTL = 24 * 3600 * 1000;
 
 async function getTickerMap(): Promise<Record<string, { cik: string; name: string; ticker: string }>> {
-  if (tickerCache && Date.now() - tickerCacheTime < TICKER_CACHE_TTL) {
-    return tickerCache;
-  }
+  if (tickerCache && Date.now() - tickerCacheTime < TICKER_CACHE_TTL) return tickerCache;
   try {
     const res = await fetch(TICKERS_URL, { headers: { 'User-Agent': USER_AGENT } });
     if (!res.ok) return {};
     const data = await res.json();
-
     const map: Record<string, { cik: string; name: string; ticker: string }> = {};
     for (const entry of Object.values(data) as any[]) {
       const ticker = (entry.ticker || '').toLowerCase();
@@ -117,21 +110,18 @@ async function getTickerMap(): Promise<Record<string, { cik: string; name: strin
       if (ticker) map[ticker] = { cik, name: entry.title, ticker: entry.ticker };
       if (name)   map[name]   = { cik, name: entry.title, ticker: entry.ticker };
     }
-    tickerCache     = map;
+    tickerCache = map;
     tickerCacheTime = Date.now();
     return map;
-  } catch {
-    return {};
-  }
+  } catch { return {}; }
 }
 
 export async function validateCompany(
   companyName: string,
-  ticker?:     string,
+  ticker?: string,
 ): Promise<CompanyEligibility> {
   const key = companyName.toLowerCase().trim();
 
-  // 1. Pre-mapped names
   const mapped = NAME_MAP[key];
   if (mapped) {
     if (mapped.legalName === 'PRIVATE') {
@@ -150,81 +140,58 @@ export async function validateCompany(
     }
     return {
       isUSListed: true, isPublicCompany: true, secFilingFound: true,
-      cik: mapped.cik, legalName: mapped.legalName,
+      cik: mapped.cik, legalName: mapped.legalName, ticker: mapped.ticker,
     };
   }
 
-  // 2. EDGAR ticker JSON — exact ticker, then exact name, then v6.1 smarter fuzzy
   try {
     const tickerMap = await getTickerMap();
-
     if (ticker) {
       const byTicker = tickerMap[ticker.toLowerCase()];
       if (byTicker) {
-        return {
-          isUSListed: true, isPublicCompany: true, secFilingFound: true,
-          cik: byTicker.cik, legalName: byTicker.name,
-        };
+        return { isUSListed: true, isPublicCompany: true, secFilingFound: true,
+          cik: byTicker.cik, legalName: byTicker.name, ticker: byTicker.ticker };
       }
     }
-
     const byName = tickerMap[key];
     if (byName) {
-      return {
-        isUSListed: true, isPublicCompany: true, secFilingFound: true,
-        cik: byName.cik, legalName: byName.name,
-      };
+      return { isUSListed: true, isPublicCompany: true, secFilingFound: true,
+        cik: byName.cik, legalName: byName.name, ticker: byName.ticker };
     }
-
-    // v6.1: starts-with match preferred over contains, prefer shorter names
-    // Fixes case where "Apple" might match "Pineapple Holdings" before AAPL
     const startsWith = Object.values(tickerMap).filter(entry =>
       entry.name.toLowerCase().startsWith(key)
     ).sort((a, b) => a.name.length - b.name.length);
-
     if (startsWith.length > 0) {
       const best = startsWith[0];
-      return {
-        isUSListed: true, isPublicCompany: true, secFilingFound: true,
-        cik: best.cik, legalName: best.name,
-      };
+      return { isUSListed: true, isPublicCompany: true, secFilingFound: true,
+        cik: best.cik, legalName: best.name, ticker: best.ticker };
     }
-
-    // Fallback: contains match with shortest-name preference
     const fuzzy = Object.values(tickerMap).filter(entry =>
       entry.name.toLowerCase().includes(key)
     ).sort((a, b) => a.name.length - b.name.length);
-
     if (fuzzy.length > 0) {
       const best = fuzzy[0];
-      return {
-        isUSListed: true, isPublicCompany: true, secFilingFound: true,
-        cik: best.cik, legalName: best.name,
-      };
+      return { isUSListed: true, isPublicCompany: true, secFilingFound: true,
+        cik: best.cik, legalName: best.name, ticker: best.ticker };
     }
   } catch { /* fall through */ }
 
-  // 3. EDGAR full-text search
   try {
     const url  = `${EDGAR_SEARCH}"${encodeURIComponent(companyName)}"&dateRange=custom&startdt=2022-01-01&forms=10-K`;
     const res  = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
     const data = await res.json();
     if (data?.hits?.hits?.length > 0) {
       const top = data.hits.hits[0]._source;
-      return {
-        isUSListed: true, isPublicCompany: true, secFilingFound: true,
-        cik:       top.entity_id,
-        legalName: top.display_names?.[0] || companyName,
-      };
+      return { isUSListed: true, isPublicCompany: true, secFilingFound: true,
+        cik: top.entity_id, legalName: top.display_names?.[0] || companyName };
     }
   } catch (err) {
     console.error('[company-validator] EDGAR search error:', err);
   }
 
-  // 4. Unknown
   return {
     isUSListed: false, isPublicCompany: false, secFilingFound: false,
     legalName: companyName,
-    ineligibilityReason: `No SEC filing found for "${companyName}". This may be a private company, non-US listed, or a search term that doesn't match an SEC registrant. Score based on news signals only.`,
+    ineligibilityReason: `No SEC filing found for "${companyName}". This may be a private company, non-US listed, or a search term that doesn't match an SEC registrant.`,
   };
 }

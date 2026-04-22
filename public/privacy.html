@@ -4,128 +4,43 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Privacy Policy — EjectSeat</title>
-<meta name="description" content="EjectSeat privacy policy — what we collect, why, and how to delete it.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
-:root{
-  --cream:#FAF8F5;--cream2:#F3F0EB;--slate:#1C2B3A;--slate2:#2D3F52;
-  --mid:#6B7F92;--soft:#94A3B4;--coral:#D94F3D;
-  --line:rgba(28,43,58,0.08);--line2:rgba(28,43,58,0.14);
-  --serif:'Instrument Serif',Georgia,serif;
-  --sans:'Geist',system-ui,sans-serif;
-  --mono:'Geist Mono',monospace;
-}
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-body{background:var(--cream);color:var(--slate);font-family:var(--sans);-webkit-font-smoothing:antialiased}
-.nav{display:flex;align-items:center;justify-content:space-between;padding:14px 24px;border-bottom:1px solid var(--line);background:rgba(250,248,245,0.96);backdrop-filter:blur(12px);position:sticky;top:0;z-index:200}
-.logo{font-family:var(--serif);font-size:20px;color:var(--slate);text-decoration:none;display:flex;align-items:center;gap:8px}
-.logo-dot{width:8px;height:8px;background:var(--coral);border-radius:50%}
-.nav-link{font-size:13px;color:var(--mid);text-decoration:none;font-weight:400;margin-left:14px}
-.nav-link:hover{color:var(--slate)}
-.page{max-width:720px;margin:0 auto;padding:48px 24px 60px}
-h1{font-family:var(--serif);font-size:clamp(34px,5vw,48px);color:var(--slate);margin-bottom:8px;font-weight:400;line-height:1.1}
-.updated{font-family:var(--mono);font-size:11px;color:var(--soft);margin-bottom:32px}
-h2{font-family:var(--serif);font-size:22px;color:var(--slate);margin:36px 0 12px;font-weight:400}
-p{font-size:15px;color:var(--slate2);line-height:1.75;margin-bottom:14px}
-ul{margin:6px 0 14px 22px}
-li{font-size:15px;color:var(--slate2);line-height:1.75;margin-bottom:6px}
-strong{color:var(--slate);font-weight:500}
-a{color:var(--coral);text-decoration:none}
-a:hover{text-decoration:underline}
-.bottom-strip{border-top:1px solid var(--line);padding:14px 24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;background:#fff;margin-top:48px}
-.bs-left{font-family:var(--mono);font-size:11px;color:var(--soft)}
-.bs-right{display:flex;gap:16px;flex-wrap:wrap}
-.bs-right a{font-size:12px;color:var(--mid)}
-.bs-right a.cur{color:var(--slate);font-weight:500}
-@media(max-width:600px){.page{padding:32px 16px 40px}h1{font-size:30px}}
+  :root { --bg:#0b0d10; --panel:#14171c; --border:#22272f; --text:#e8ecf1; --text-dim:#9ba3b0; --text-faint:#6b7280; --accent:#4f8fff; }
+  * { box-sizing: border-box; }
+  body { margin:0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif; line-height: 1.6; }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 120px; }
+  h1 { font-size: 28px; letter-spacing: -0.02em; }
+  h2 { font-size: 18px; margin-top: 32px; color: var(--text); }
+  p, li { color: var(--text-dim); font-size: 15px; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .back { display: inline-block; margin-bottom: 24px; color: var(--text-dim); font-size: 14px; }
 </style>
 </head>
 <body>
-
-<nav class="nav">
-  <a href="/" class="logo"><span class="logo-dot"></span>EjectSeat</a>
-  <div>
-    <a class="nav-link" href="/">Search</a>
-    <a class="nav-link" href="https://intelligence.ejectseat.io" target="_blank">For institutions →</a>
-  </div>
-</nav>
-
-<div class="page">
+<div class="wrap">
+  <a class="back" href="/">← Back</a>
   <h1>Privacy Policy</h1>
-  <div class="updated">Last updated: 21 April 2026</div>
-
-  <p>EjectSeat is operated by <strong>Admin-Ace LLC</strong> ("we", "us", "our"). This page explains, in plain English, what personal data we collect when you use the service at <a href="https://www.ejectseat.io">ejectseat.io</a>, why we collect it, and how to remove it.</p>
+  <p><em>Last updated: April 2026</em></p>
 
   <h2>What we collect</h2>
-  <ul>
-    <li><strong>Email address</strong> — only if you choose to sign in (magic link) or subscribe to score-change alerts.</li>
-    <li><strong>Search history</strong> — the company names you search for, the resulting score, and the timestamp. This powers your watchlist, the "recents" chips, and our aggregate analytics.</li>
-    <li><strong>Anonymous session identifier</strong> — a random ID stored in a first-party cookie (<code>es_session</code>) so we can give consistent responses across page loads even if you don't sign in.</li>
-    <li><strong>Basic request metadata</strong> — page views, referrer (where you came from), and a truncated user-agent string. We do not store IP addresses for analytics.</li>
-  </ul>
+  <p>We collect the minimum necessary to operate EjectSeat. When you search a company, we log the company name, your session identifier, and (if you're signed in) your user ID. We keep a server-side record of page visits via the <code>/api/beacon</code> endpoint for product analytics — this includes your IP address and user-agent, which are stored alongside each event.</p>
+  <p>If you sign up with email (magic link), we store your email address in our Supabase auth table. If you join the beta waitlist, we store your email and the signup source context.</p>
 
-  <p>We do <strong>not</strong> collect: names, phone numbers, payment information, location data, employer details, or any other personal information. The service is free and there is no payment processing.</p>
+  <h2>What we don't collect</h2>
+  <p>We don't sell data. We don't use third-party advertising trackers. We don't profile you for advertising. We don't share your search history with employers or anyone else.</p>
 
-  <h2>Why we collect it</h2>
-  <ul>
-    <li><strong>Magic-link sign-in</strong> — to authenticate you without passwords.</li>
-    <li><strong>Caching scores</strong> — so we don't refetch SEC filings every time you re-search a company within 6–24 hours.</li>
-    <li><strong>Aggregate analytics</strong> — to understand which companies are popular and to power the "LandingZone" hiring view based on collective search patterns.</li>
-    <li><strong>Score-change alerts</strong> (opt-in) — to email you if a company on your watchlist has a score change above your chosen threshold.</li>
-  </ul>
+  <h2>What we do with your data</h2>
+  <p>We use your search history to cache scores (so the next time you search the same company you get an instant answer). We use aggregate analytics to understand which companies people ask about most and to prioritise product work. Account emails are used only for authentication and, with your consent, product updates.</p>
 
-  <h2>Who we share it with</h2>
-  <p>We use the following third-party processors to operate the service. We do not sell your data to anyone, ever.</p>
-  <ul>
-    <li><strong>Supabase</strong> — hosts our database and authentication system. Your email and search history are stored on Supabase infrastructure (US region).</li>
-    <li><strong>Vercel</strong> — hosts the website and runs the API. They process incoming requests but do not retain your data.</li>
-    <li><strong>Anthropic</strong> — we send public-filing text and news headlines to Anthropic's Claude API for language analysis. Your personal data (email, session ID) is never sent to Anthropic.</li>
-    <li><strong>Adzuna</strong> — provides the live job listings shown in the "LandingZone" section. We send a company name and role/location filters; we do not send any personal data.</li>
-    <li><strong>SEC EDGAR & Google News RSS</strong> — public data sources we read. We send only the company name, no personal data.</li>
-  </ul>
+  <h2>Data location and retention</h2>
+  <p>Data is stored in Supabase (hosted on AWS). Analytics events are retained for 18 months. Score history is retained indefinitely to support prediction backtesting. You can request deletion of your account data by emailing <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a>.</p>
 
-  <h2>Cookies</h2>
-  <p>We use one first-party cookie (<code>es_session</code>) to identify your browser session. It expires after 365 days. We do not use third-party tracking cookies, advertising cookies, or analytics pixels (no Google Analytics, no Facebook Pixel, no Hotjar, etc.).</p>
-
-  <h2>Data retention</h2>
-  <ul>
-    <li><strong>Search history</strong> — kept indefinitely so we can show you trends over time. Delete on request.</li>
-    <li><strong>Score cache</strong> — refreshed automatically every 6 hours (signed-in) or 24 hours (anonymous).</li>
-    <li><strong>Anonymous session data</strong> — cleared when you delete your browser cookies.</li>
-    <li><strong>Email-based account</strong> — kept until you ask us to delete it.</li>
-  </ul>
-
-  <h2>Your rights</h2>
-  <p>You can ask us to:</p>
-  <ul>
-    <li>Send you a copy of all data we hold about you</li>
-    <li>Correct any inaccuracies</li>
-    <li>Delete your account and all associated data</li>
-    <li>Stop sending you any emails</li>
-  </ul>
-  <p>To exercise any of these rights, email <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a> from the email address associated with your account. We will respond within 30 days.</p>
-
-  <h2>Children</h2>
-  <p>EjectSeat is not directed at children under 16. We do not knowingly collect data from anyone under 16. If you believe we have, please contact us and we will delete it.</p>
-
-  <h2>Changes to this policy</h2>
-  <p>We will update this page if our practices change. The "Last updated" date at the top reflects the most recent revision. Material changes will be notified via email to signed-in users.</p>
+  <h2>Third parties</h2>
+  <p>EjectSeat sends queries to Anthropic (Claude API) for analysis, to the SEC EDGAR public API, to Google News RSS, to Motley Fool for public earnings transcripts, and to Adzuna for hiring data. These services receive the company name you search but do not receive your email or account information.</p>
 
   <h2>Contact</h2>
-  <p>Admin-Ace LLC<br>
-  Email: <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a></p>
+  <p>EjectSeat is operated by Admin-Ace LLC. Questions: <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a>.</p>
 </div>
-
-<div class="bottom-strip">
-  <div class="bs-left">© 2026 EjectSeat · Admin-Ace LLC</div>
-  <div class="bs-right">
-    <a href="/">Search</a>
-    <a class="cur" href="/privacy.html">Privacy</a>
-    <a href="/terms.html">Terms</a>
-    <a href="https://intelligence.ejectseat.io" target="_blank" style="color:var(--coral);font-weight:500">For institutions →</a>
-  </div>
-</div>
-
 </body>
 </html>
