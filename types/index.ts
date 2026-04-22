@@ -272,7 +272,7 @@ export interface RiskScore {
   // Core (v5 onwards, preserved)
   score:           number;
   band:            RiskBand;
-  confidence:      Confidence;
+  confidence?:     Confidence;        // optional: cache hits / early-return paths don't compute
   companyState?:   CompanyState;
   stateFloor?:     number;
   stateCeiling?:   number;

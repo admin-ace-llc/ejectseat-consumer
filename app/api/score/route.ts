@@ -37,7 +37,7 @@ import { fetchRecentNews, fetchRecentHeadlines, collectMediaSignals } from '@/li
 import { fetchRecentTranscripts } from '@/lib/signals/transcripts';
 import type {
   EvidenceBundle, ComprehensiveIntelligence, RiskScore, Signal, ConfirmedEvent,
-  CompanyState,
+  CompanyState, Confidence,
 } from '@/types';
 import { normaliseLegacyState } from '@/types';
 
@@ -238,6 +238,7 @@ export async function POST(req: NextRequest) {
         risk: {
           score:        cachedCo.cached_score,
           band:         cachedCo.cached_band,
+          confidence:   (cachedCo.cached_intelligence?.confidence as Confidence) || 'medium',
           companyState: normaliseLegacyState(cachedCo.cached_state),
           signals:      [],
           confirmedEvents: [],
@@ -274,7 +275,8 @@ export async function POST(req: NextRequest) {
     if (eligibility.ineligibilityReason?.includes('market index')) {
       return NextResponse.json({
         risk: {
-          score: 0, band: 'LOW' as const, companyState: 'CLEAR' as CompanyState,
+          score: 0, band: 'LOW' as const, confidence: 'high' as const,
+          companyState: 'CLEAR' as CompanyState,
           signals: [], confirmedEvents: [], scoreHistory: [],
           claudeSummary: eligibility.ineligibilityReason,
           disclaimer: {
@@ -295,7 +297,8 @@ export async function POST(req: NextRequest) {
     if (!eligibility.secFilingFound) {
       return NextResponse.json({
         risk: {
-          score: 0, band: 'LOW' as const, companyState: 'CLEAR' as CompanyState,
+          score: 0, band: 'LOW' as const, confidence: 'low' as const,
+          companyState: 'CLEAR' as CompanyState,
           signals: [], confirmedEvents: [], scoreHistory: [],
           claudeSummary: eligibility.ineligibilityReason || `SEC filings not available for ${companyName}.`,
           disclaimer: {

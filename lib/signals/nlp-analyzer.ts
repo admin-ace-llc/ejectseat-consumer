@@ -369,7 +369,7 @@ Return JSON only. No preamble, no markdown fences, no commentary.`;
     });
 
     const content = resp.content[0];
-    if (content.type !== 'text') {
+    if (content.type !== 'text' || !content.text) {
       empty.low_confidence_reason = 'Non-text response from Sonnet';
       empty.requires_review = true;
       return empty;
@@ -744,7 +744,7 @@ ${rawText.slice(0, 50000)}`,
       }],
     });
     const content = msg.content[0];
-    if (content.type !== 'text') return '';
+    if (content.type !== 'text' || !content.text) return '';
     const r = content.text.trim();
     return r === 'NONE' ? '' : r;
   } catch (err) {
@@ -782,7 +782,7 @@ Only return JSON:
       }],
     });
     const content = msg.content[0];
-    if (content.type !== 'text') return def;
+    if (content.type !== 'text' || !content.text) return def;
     const parsed = safeParseJSON<any>(content.text, null);
     if (!parsed || !parsed.state) return def;
     return {
@@ -812,7 +812,7 @@ export async function verifyXBRLSignal(
       }],
     });
     const content = msg.content[0];
-    if (content.type !== 'text') return def;
+    if (content.type !== 'text' || !content.text) return def;
     return safeParseJSON<XBRLVerification>(content.text, def);
   } catch { return def; }
 }
@@ -830,7 +830,7 @@ export async function analyzeText(text: string, sourceType: string, company: str
       }],
     });
     const content = msg.content[0];
-    if (content.type !== 'text') return def;
+    if (content.type !== 'text' || !content.text) return def;
     const parsed = safeParseJSON<any[]>(content.text, []);
     if (!Array.isArray(parsed)) return def;
     return { signals: parsed.filter(s => s.signal_type && s.evidence), source_type: sourceType, analyzed_at: new Date().toISOString() };
