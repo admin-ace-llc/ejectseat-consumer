@@ -487,65 +487,31 @@ h1 em{font-style:italic;color:var(--coral)}
 <div class="how-page" id="howPage">
   <button class="how-back" onclick="showHome(event)">← Back to search</button>
   <h2 class="how-h2">How EjectSeat works</h2>
-  <p class="how-sub">Every score is built entirely from SEC filings and named editorial sources. No Reddit. No Blind. No guesswork.</p>
+  <p class="how-sub">A real-time risk score for any US-listed public company or Foreign Private Issuer — built only from public, named sources.</p>
 
   <div class="how-step">
     <div class="how-num">01</div>
     <div class="how-body">
-      <h3>Company state classification</h3>
-      <p>Before scoring, we classify the company into one of five states: <strong>CLEAR</strong>, <strong>WATCHING</strong>, <strong>ACTIVE</strong>, <strong>ACTIVE_MULTI_YEAR</strong> (mid-cycle of a disclosed multi-year transformation programme), or <strong>CONTINUATION_RISK</strong>. State determines the score floor and ceiling — a confirmed layoff can never score LOW.</p>
+      <h3>Public filings, in real time</h3>
+      <p>We continuously read SEC EDGAR — the official US securities filings repository — alongside named editorial sources from major publications. Every score is generated on demand from the most recent available data.</p>
     </div>
   </div>
 
   <div class="how-step">
     <div class="how-num">02</div>
     <div class="how-body">
-      <h3>Programme intelligence extraction</h3>
-      <p>A dedicated Sonnet call reads the full filing text and extracts any named transformation programme — "Thrive", "Fit for Growth", "Project Olympus" — along with its total disclosed size, amount recognised to date, phase, and severance component. This catches programmes keyword filters miss.</p>
+      <h3>Proprietary intelligence layer</h3>
+      <p>Our analysis stack classifies each company's current state, extracts structured intelligence about restructuring activity where present, and weighs corroborating signals across filings and verified press coverage. The output is a single 0–100 score with supporting context.</p>
     </div>
   </div>
 
   <div class="how-step">
     <div class="how-num">03</div>
     <div class="how-body">
-      <h3>SEC EDGAR XBRL signals</h3>
-      <p>We read the company's actual financial filings — restructuring charges, headcount drops, goodwill impairments, NT filings (unable to file on time), and (for Foreign Private Issuers) 20-F annuals and 6-K interims. Every XBRL figure is cross-validated against the filing text to prevent false positives.</p>
+      <h3>What we exclude</h3>
+      <p>Reddit. Blind. LinkedIn. X / Twitter. Glassdoor. Anonymous tips. None of these contribute to any EjectSeat score. We only weight named, accountable sources — that's what makes the score defensible.</p>
     </div>
   </div>
-
-  <div class="how-step">
-    <div class="how-num">04</div>
-    <div class="how-body">
-      <h3>Headcount & function-level risk</h3>
-      <p>From severance dollars and avg severance per head, we estimate affected headcount with confidence tiers. From management commentary, we extract which functions are explicitly at risk (back-office, corporate) vs protected (client-facing, revenue-generating).</p>
-    </div>
-  </div>
-
-  <div class="how-step">
-    <div class="how-num">05</div>
-    <div class="how-body">
-      <h3>Bankruptcy distinction</h3>
-      <p>Chapter 7 / 11 / 15 filings are a court-supervised process — fundamentally different employee implications from voluntary restructuring. When a Voluntary Petition is detected, it's surfaced as a distinct slate card, not conflated with a transformation programme.</p>
-    </div>
-  </div>
-
-  <div class="how-step">
-    <div class="how-num">06</div>
-    <div class="how-body">
-      <h3>Verified media signals</h3>
-      <p>Four search queries per company — layoffs, restructuring, activist investor pressure, and profitability language — against Tier A and B publications only. Reddit, Blind, LinkedIn, and social media are explicitly excluded from every score.</p>
-    </div>
-  </div>
-
-  <hr class="how-divider">
-  <h3 style="font-family:var(--serif);font-size:20px;color:var(--slate);margin-bottom:16px;font-weight:400">Source tiers</h3>
-  <table class="how-table">
-    <tr><th>Tier</th><th>Sources</th><th>Weight</th></tr>
-    <tr><td class="tier-a">Tier A</td><td>Reuters, Bloomberg, FT, WSJ, AP, MarketWatch</td><td>1.1× – 1.3×</td></tr>
-    <tr><td class="tier-b">Tier B</td><td>CNBC, The Information, TechCrunch, Axios, Fortune</td><td>0.9× – 1.1×</td></tr>
-    <tr><td>Tier C</td><td>The Verge, Wired, Ars Technica, VentureBeat</td><td>0.75× – 0.8×</td></tr>
-    <tr><td class="tier-exc">Excluded</td><td>Reddit, Blind, LinkedIn, X/Twitter, Glassdoor, anonymous sources</td><td>0 pts always</td></tr>
-  </table>
 
   <hr class="how-divider">
   <h3 style="font-family:var(--serif);font-size:20px;color:var(--slate);margin-bottom:16px;font-weight:400">What the score means</h3>
@@ -553,7 +519,7 @@ h1 em{font-style:italic;color:var(--coral)}
     <tr><th>Score</th><th>Band</th><th>What it means</th></tr>
     <tr><td>65 – 100</td><td class="tier-a">HIGH</td><td>Strong signals in SEC filings and/or confirmed media. Monitor actively.</td></tr>
     <tr><td>40 – 64</td><td class="tier-b">MEDIUM</td><td>Precursor signals present. No confirmed announcement yet.</td></tr>
-    <tr><td>0 – 39</td><td style="color:var(--sage);font-weight:600">LOW</td><td>No significant signals in current filings or Tier A/B media.</td></tr>
+    <tr><td>0 – 39</td><td style="color:var(--sage);font-weight:600">LOW</td><td>No significant signals in current filings or named editorial sources.</td></tr>
   </table>
 
   <p style="font-family:var(--mono);font-size:11px;color:var(--soft);line-height:1.65;margin-top:16px">EjectSeat scores are predictive signals based on public data — not confirmed outcomes. Scores do not guarantee layoffs will or will not occur. US-listed public companies and Foreign Private Issuers only. Private companies and market indexes are not scored.</p>
@@ -564,8 +530,8 @@ h1 em{font-style:italic;color:var(--coral)}
   <div class="bs-left">© 2026 EjectSeat · Predictive signal, not financial advice</div>
   <div class="bs-right">
     <a href="#" onclick="showHow(event)">How it works</a>
-    <a href="#">Privacy</a>
-    <a href="#">Terms</a>
+    <a href="/privacy.html">Privacy</a>
+    <a href="/terms.html">Terms</a>
     <a class="bs-ent" href="https://intelligence.ejectseat.io" target="_blank">For institutions →</a>
   </div>
 </div>
@@ -980,6 +946,20 @@ async function scoreCompany(companyName,ticker,con){
 
 function renderConfirmation(resolveData,originalQuery){
   const{confidence,matches}=resolveData;
+
+  // ── NO-MATCH case ─ if the only "match" is type:unknown / not_found,
+  // do not offer scoring. Prompt user to try a different name.
+  const onlyUnknown = matches.length === 1
+    && (matches[0].type === 'unknown' || matches[0].source === 'not_found');
+  if (onlyUnknown) {
+    return `<div class="msg-card">
+      <div class="msg-icon">🔍</div>
+      <div class="msg-title">No match found for "${esc(originalQuery)}"</div>
+      <div class="msg-sub">EjectSeat scores US-listed public companies and Foreign Private Issuers (with SEC filings). Try a different name or stock ticker — for example "Snap" or "INTC".</div>
+      <button class="search-btn" style="border-radius:8px;padding:10px 22px" onclick="resetAndFocusSearch()">Try another company →</button>
+    </div>`;
+  }
+
   const isMultiple=matches.length>1;
   const header=isMultiple
     ?`Found ${matches.length} matches for "<strong>${esc(originalQuery)}</strong>" — which did you mean?`
@@ -1009,9 +989,22 @@ function renderConfirmation(resolveData,originalQuery){
     ${rows}
     <div class="resolve-footer">
       <span>Different company?</span>
-      <a onclick="scoreCompany('${esc(originalQuery)}',null,document.getElementById('resultContainer'))">Score "${esc(originalQuery)}" as-is →</a>
+      <a onclick="resetAndFocusSearch()">Try a different search →</a>
     </div>
   </div>`;
+}
+
+// Clears the input, returns focus to it, and scrolls user to the top
+function resetAndFocusSearch(){
+  const con = document.getElementById('resultContainer');
+  if (con) con.innerHTML = '';
+  const sec = document.getElementById('resultSection');
+  if (sec) sec.classList.add('hidden');
+  const lz = document.getElementById('lzSection');
+  if (lz) lz.classList.add('hidden');
+  const inp = document.getElementById('heroInput');
+  if (inp){ inp.value=''; inp.focus(); }
+  window.scrollTo({top:0, behavior:'smooth'});
 }
 
 function renderIndexError(match,query){
