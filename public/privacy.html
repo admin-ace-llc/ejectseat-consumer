@@ -1,46 +1,108 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Privacy Policy — EjectSeat</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M8 20 L16 10 L24 20' stroke='white' stroke-width='2.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+
 <style>
-  :root { --bg:#0b0d10; --panel:#14171c; --border:#22272f; --text:#e8ecf1; --text-dim:#9ba3b0; --text-faint:#6b7280; --accent:#4f8fff; }
-  * { box-sizing: border-box; }
-  body { margin:0; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, system-ui, sans-serif; line-height: 1.6; }
-  .wrap { max-width: 760px; margin: 0 auto; padding: 48px 24px 120px; }
-  h1 { font-size: 28px; letter-spacing: -0.02em; }
-  h2 { font-size: 18px; margin-top: 32px; color: var(--text); }
-  p, li { color: var(--text-dim); font-size: 15px; }
-  a { color: var(--accent); text-decoration: none; }
-  a:hover { text-decoration: underline; }
-  .back { display: inline-block; margin-bottom: 24px; color: var(--text-dim); font-size: 14px; }
+:root {
+  --bg: #f6f8fb; --panel: #ffffff; --border: #e4e8ef;
+  --text: #0f172a; --text-dim: #475569; --text-faint: #64748b;
+  --accent: #2563eb; --accent-dark: #1d4ed8;
+  --shadow-sm: 0 1px 2px rgba(15,23,42,0.04);
+  --radius-md: 12px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-size: 15px; line-height: 1.65; }
+@supports (font-variation-settings: normal) { body { font-family: 'Inter var', 'Inter', -apple-system, system-ui, sans-serif; } }
+a { color: var(--accent); text-decoration: none; transition: color 120ms ease; }
+a:hover { color: var(--accent-dark); }
+
+.wrap { max-width: 760px; margin: 0 auto; padding: 28px 24px 80px; }
+header.site { display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; }
+.brand { font-weight: 700; font-size: 18px; letter-spacing: -0.015em; display: flex; align-items: center; gap: 8px; color: var(--text); }
+.brand-mark { width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, var(--accent) 0%, #60a5fa 100%); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
+.brand-mark svg { width: 14px; height: 14px; }
+.brand-name span { color: var(--accent); }
+nav.site { display: flex; gap: 22px; }
+nav.site a { color: var(--text-dim); font-size: 14px; font-weight: 500; }
+nav.site a.active { color: var(--text); }
+nav.site a:hover { color: var(--text); }
+
+.content { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 32px 36px; box-shadow: var(--shadow-sm); }
+.content h1 { font-size: 30px; letter-spacing: -0.025em; margin: 0 0 8px; font-weight: 700; }
+.content .meta { color: var(--text-faint); font-size: 13px; margin: 0 0 24px; }
+.content h2 { font-size: 17px; margin: 28px 0 10px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.content p { color: var(--text-dim); margin: 0 0 12px; }
+.content code { background: #f1f5f9; padding: 1px 6px; border-radius: 4px; font-size: 13px; color: var(--text); }
+
+footer.site { margin-top: 40px; padding-top: 22px; color: var(--text-faint); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+footer.site nav { display: flex; gap: 18px; }
+footer.site a { color: var(--text-dim); }
+
+@media (max-width: 640px) {
+  .wrap { padding: 20px 16px 60px; }
+  .content { padding: 24px 22px; }
+  .content h1 { font-size: 24px; }
+  nav.site { gap: 14px; }
+  nav.site a { font-size: 13px; }
+  footer.site { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <a class="back" href="/">← Back</a>
-  <h1>Privacy Policy</h1>
-  <p><em>Last updated: April 2026</em></p>
 
-  <h2>What we collect</h2>
-  <p>We collect the minimum necessary to operate EjectSeat. When you search a company, we log the company name, your session identifier, and (if you're signed in) your user ID. We keep a server-side record of page visits via the <code>/api/beacon</code> endpoint for product analytics — this includes your IP address and user-agent, which are stored alongside each event.</p>
-  <p>If you sign up with email (magic link), we store your email address in our Supabase auth table. If you join the beta waitlist, we store your email and the signup source context.</p>
+  <header class="site">
+    <a href="/" class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 32 32" fill="none"><path d="M8 20 L16 10 L24 20" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="brand-name">Eject<span>Seat</span></span>
+    </a>
+    <nav class="site">
+      <a href="/how.html">How it works</a>
+      <a href="/privacy.html" class="active">Privacy</a>
+      <a href="/terms.html">Terms</a>
+    </nav>
+  </header>
 
-  <h2>What we don't collect</h2>
-  <p>We don't sell data. We don't use third-party advertising trackers. We don't profile you for advertising. We don't share your search history with employers or anyone else.</p>
+  <div class="content">
+    <h1>Privacy Policy</h1>
+    <p class="meta">Last updated: April 2026</p>
 
-  <h2>What we do with your data</h2>
-  <p>We use your search history to cache scores (so the next time you search the same company you get an instant answer). We use aggregate analytics to understand which companies people ask about most and to prioritise product work. Account emails are used only for authentication and, with your consent, product updates.</p>
+    <h2>What we collect</h2>
+    <p>We collect the minimum necessary to operate EjectSeat. When you search a company, we log the company name, your session identifier, and (if you're signed in) your user ID. We keep a server-side record of page visits via the <code>/api/beacon</code> endpoint for product analytics — this includes your IP address and user-agent, which are stored alongside each event.</p>
+    <p>If you sign up with email (magic link), we store your email address in our Supabase auth table. If you join the beta waitlist, we store your email and the signup source context.</p>
 
-  <h2>Data location and retention</h2>
-  <p>Data is stored in Supabase (hosted on AWS). Analytics events are retained for 18 months. Score history is retained indefinitely to support prediction backtesting. You can request deletion of your account data by emailing <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a>.</p>
+    <h2>What we don't collect</h2>
+    <p>We don't sell data. We don't use third-party advertising trackers. We don't profile you for advertising. We don't share your search history with employers or anyone else.</p>
 
-  <h2>Third parties</h2>
-  <p>EjectSeat sends queries to Anthropic (Claude API) for analysis, to the SEC EDGAR public API, to Google News RSS, to Motley Fool for public earnings transcripts, and to Adzuna for hiring data. These services receive the company name you search but do not receive your email or account information.</p>
+    <h2>What we do with your data</h2>
+    <p>We use your search history to cache scores (so the next time you search the same company you get an instant answer). We use aggregate analytics to understand which companies people ask about most and to prioritise product work. Account emails are used only for authentication and, with your consent, product updates.</p>
 
-  <h2>Contact</h2>
-  <p>EjectSeat is operated by Admin-Ace LLC. Questions: <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a>.</p>
+    <h2>Data location and retention</h2>
+    <p>Data is stored in Supabase (hosted on AWS). Analytics events are retained for 18 months. Score history is retained indefinitely to support prediction backtesting. You can request deletion of your account data by emailing <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a>.</p>
+
+    <h2>Third parties</h2>
+    <p>EjectSeat sends queries to Anthropic (Claude API) for analysis, to the SEC EDGAR public API, to Google News RSS, to Motley Fool for public earnings transcripts, and to Adzuna for hiring data. These services receive the company name you search but do not receive your email or account information.</p>
+
+    <h2>Contact</h2>
+    <p>EjectSeat is operated by Admin-Ace LLC. Questions: <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a>.</p>
+  </div>
+
+  <footer class="site">
+    <div>© Admin-Ace LLC</div>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/how.html">How it works</a>
+      <a href="/terms.html">Terms</a>
+    </nav>
+  </footer>
+
 </div>
 </body>
 </html>

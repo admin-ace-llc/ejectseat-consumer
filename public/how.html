@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>How it works — EjectSeat</title>
+<meta name="description" content="How EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media to produce a forward-looking layoff risk score." />
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M8 20 L16 10 L24 20' stroke='white' stroke-width='2.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+<link rel="preconnect" href="https://rsms.me/">
+<link rel="stylesheet" href="https://rsms.me/inter/inter.css">
+
+<style>
+:root {
+  --bg: #f6f8fb; --panel: #ffffff; --panel-alt: #f8fafc; --border: #e4e8ef; --border-strong: #cbd5e1;
+  --text: #0f172a; --text-dim: #475569; --text-faint: #64748b;
+  --accent: #2563eb; --accent-dark: #1d4ed8; --accent-soft: #eff4ff; --accent-text: #1e40af;
+  --green: #059669; --green-soft: #ecfdf5; --green-text: #047857;
+  --amber: #d97706; --amber-soft: #fffbeb; --amber-text: #92400e;
+  --red: #dc2626; --red-soft: #fef2f2; --red-text: #b91c1c;
+  --shadow-sm: 0 1px 2px rgba(15,23,42,0.04);
+  --shadow: 0 1px 3px rgba(15,23,42,0.06), 0 1px 2px rgba(15,23,42,0.04);
+  --radius-sm: 6px; --radius: 10px; --radius-md: 12px;
+}
+*, *::before, *::after { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Inter', -apple-system, BlinkMacSystemFont, system-ui, sans-serif; -webkit-font-smoothing: antialiased; font-size: 15px; line-height: 1.6; }
+@supports (font-variation-settings: normal) { body { font-family: 'Inter var', 'Inter', -apple-system, system-ui, sans-serif; } }
+a { color: var(--accent); text-decoration: none; transition: color 120ms ease; }
+a:hover { color: var(--accent-dark); }
+
+.wrap { max-width: 820px; margin: 0 auto; padding: 28px 24px 80px; }
+header.site { display: flex; align-items: center; justify-content: space-between; margin-bottom: 44px; }
+.brand { font-weight: 700; font-size: 18px; letter-spacing: -0.015em; display: flex; align-items: center; gap: 8px; color: var(--text); }
+.brand-mark { width: 24px; height: 24px; border-radius: 6px; background: linear-gradient(135deg, var(--accent) 0%, #60a5fa 100%); display: inline-flex; align-items: center; justify-content: center; box-shadow: var(--shadow-sm); }
+.brand-mark svg { width: 14px; height: 14px; }
+.brand-name span { color: var(--accent); }
+nav.site { display: flex; gap: 22px; }
+nav.site a { color: var(--text-dim); font-size: 14px; font-weight: 500; }
+nav.site a:hover { color: var(--text); }
+nav.site a.active { color: var(--text); }
+
+h1 { font-size: 34px; letter-spacing: -0.025em; margin: 0 0 10px; font-weight: 700; color: var(--text); }
+.lede { color: var(--text-dim); font-size: 16.5px; line-height: 1.55; margin: 0 0 36px; max-width: 620px; }
+
+.section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 26px 28px; margin-bottom: 16px; box-shadow: var(--shadow-sm); }
+.section h2 { font-size: 19px; font-weight: 700; letter-spacing: -0.015em; margin: 0 0 10px; color: var(--text); }
+.section p { color: var(--text-dim); margin: 0 0 10px; font-size: 14.5px; }
+.section p:last-child { margin-bottom: 0; }
+.section ul { color: var(--text-dim); padding-left: 20px; margin: 8px 0 0; font-size: 14.5px; }
+.section ul li { margin-bottom: 4px; }
+
+/* State stack */
+.state-stack { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 14px; }
+.state-item { display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; background: var(--panel-alt); border: 1px solid var(--border); border-radius: var(--radius); }
+.state-pill { flex-shrink: 0; display: inline-flex; align-items: center; padding: 6px 12px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; border: 1px solid transparent; }
+.state-pill.CLEAR  { background: var(--green-soft); color: var(--green-text); border-color: #a7f3d0; }
+.state-pill.WATCH  { background: var(--accent-soft); color: var(--accent-text); border-color: #bfdbfe; }
+.state-pill.LIKELY { background: var(--amber-soft); color: var(--amber-text); border-color: #fde68a; }
+.state-pill.ACTIVE { background: var(--red-soft); color: var(--red-text); border-color: #fecaca; }
+.state-body { flex: 1; }
+.state-body .score-range { color: var(--text); font-weight: 700; font-size: 13px; margin-bottom: 3px; font-variant-numeric: tabular-nums; }
+.state-body .desc { color: var(--text-dim); font-size: 14px; line-height: 1.5; }
+
+/* Source table */
+.source-table { display: grid; grid-template-columns: 140px 1fr; gap: 12px 20px; margin-top: 14px; font-size: 14.5px; }
+.source-table dt { color: var(--text); font-weight: 600; }
+.source-table dd { color: var(--text-dim); margin: 0; }
+
+.note { background: var(--accent-soft); border: 1px solid #bfdbfe; color: var(--accent-text); padding: 12px 16px; border-radius: var(--radius); font-size: 13.5px; margin: 14px 0 0; }
+
+footer.site { margin-top: 56px; padding-top: 22px; border-top: 1px solid var(--border); color: var(--text-faint); font-size: 13px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 14px; }
+footer.site nav { display: flex; gap: 18px; }
+footer.site a { color: var(--text-dim); }
+
+@media (max-width: 640px) {
+  .wrap { padding: 20px 16px 60px; }
+  h1 { font-size: 27px; }
+  .lede { font-size: 15.5px; }
+  .section { padding: 20px 20px; }
+  .state-item { flex-direction: column; gap: 10px; }
+  .source-table { grid-template-columns: 1fr; gap: 2px 0; }
+  .source-table dt { margin-top: 8px; }
+  .source-table dt:first-of-type { margin-top: 0; }
+  nav.site { gap: 14px; }
+  nav.site a { font-size: 13px; }
+  footer.site { flex-direction: column; align-items: flex-start; gap: 10px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="site">
+    <a href="/" class="brand">
+      <span class="brand-mark"><svg viewBox="0 0 32 32" fill="none"><path d="M8 20 L16 10 L24 20" stroke="white" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+      <span class="brand-name">Eject<span>Seat</span></span>
+    </a>
+    <nav class="site">
+      <a href="/how.html" class="active">How it works</a>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/terms.html">Terms</a>
+    </nav>
+  </header>
+
+  <h1>How EjectSeat works</h1>
+  <p class="lede">EjectSeat reads public disclosures and produces a forward-looking layoff risk score. Everything we use is public — no insider data, no scraping private systems. Here's what happens when you search a company.</p>
+
+  <div class="section">
+    <h2>The data we read</h2>
+    <p>For every search, we pull the most recent filings and public statements from the company and the media covering it. That evidence bundle goes to our analysis model — we do not use social media, anonymous workplace forums, or unverified leaks.</p>
+    <dl class="source-table">
+      <dt>SEC EDGAR</dt><dd>8-K, 10-K, 10-Q, 20-F, 6-K, and NT filings. Full text — not keyword-filtered — so material disclosures in unexpected Item sections aren't missed.</dd>
+      <dt>Earnings calls</dt><dd>Recent prepared remarks and Q&amp;A transcripts from Motley Fool. The Q&amp;A is where CEOs often speak off-script about headcount and cost pressure.</dd>
+      <dt>Tier A media</dt><dd>Reuters, Bloomberg, Financial Times, Wall Street Journal, Associated Press, MarketWatch.</dd>
+      <dt>Tier B media</dt><dd>CNBC, The Information, TechCrunch, Axios, Fortune, Business Insider.</dd>
+      <dt>What we exclude</dt><dd>Reddit, Blind, LinkedIn posts, anonymous forums, workplace gossip, unverified tips.</dd>
+    </dl>
+  </div>
+
+  <div class="section">
+    <h2>The four risk states</h2>
+    <p>Each company lands in one of four states. The states overlap on purpose — the analysis model can reflect nuance within a state, and the score inside the band conveys how firm the verdict is.</p>
+    <div class="state-stack">
+      <div class="state-item">
+        <span class="state-pill CLEAR">CLEAR</span>
+        <div class="state-body">
+          <div class="score-range">Score 0–35</div>
+          <div class="desc">No material layoff signals. No confirmed announcements. No forward indicators of material restructuring.</div>
+        </div>
+      </div>
+      <div class="state-item">
+        <span class="state-pill WATCH">WATCH</span>
+        <div class="state-body">
+          <div class="score-range">Score 25–64</div>
+          <div class="desc">Forward indicators present — activist pressure, CEO cost-cutting language, financial stress, sustained losses — but no confirmed layoff announcement.</div>
+        </div>
+      </div>
+      <div class="state-item">
+        <span class="state-pill LIKELY">LIKELY</span>
+        <div class="state-body">
+          <div class="score-range">Score 45–78</div>
+          <div class="desc">Multiple independent corroborating signals point to restructuring, or a confirmed small cut alongside additional pressure. Strong forward probability.</div>
+        </div>
+      </div>
+      <div class="state-item">
+        <span class="state-pill ACTIVE">ACTIVE</span>
+        <div class="state-body">
+          <div class="score-range">Score 60–90</div>
+          <div class="desc">A confirmed layoff event in an 8-K/6-K/press release within the last 90 days, a publicly disclosed multi-year transformation programme currently mid-cycle, or a court-filed bankruptcy.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Strict evidence binding</h2>
+    <p>Every factual claim in the analysis — every confirmed event, every forward-looking signal, every headcount estimate — must cite a specific source from the evidence bundle. We require both a reference (the SEC accession number, article URL, or transcript link) and a direct quote.</p>
+    <p>A post-validator runs after the model responds. It strips out any claim whose source reference doesn't match something actually in the bundle, enforces a confidence floor based on how many independent sources corroborate a finding (three for high confidence, two for medium), and flags results for review when the verdict and evidence disagree.</p>
+    <div class="note">This means the score is anchored to what the company and credible media have actually said — not to training-data recollection or surface-level pattern matching.</div>
+  </div>
+
+  <div class="section">
+    <h2>What EjectSeat isn't</h2>
+    <ul>
+      <li><strong>Not a guarantee.</strong> A high score does not mean you will be laid off. A low score does not mean your job is safe. Circumstances change.</li>
+      <li><strong>Not investment advice.</strong> Do not buy, sell, or short a stock based on an EjectSeat score. Consult a licensed advisor for investment decisions.</li>
+      <li><strong>Not insider information.</strong> Everything we analyse is public. If there's a layoff plan that hasn't been disclosed yet, we have no way to know about it.</li>
+      <li><strong>Not a replacement for your own judgement.</strong> Use it as one input alongside internal signals (hiring freezes, org changes, manager behaviour) and direct conversations with people you trust.</li>
+    </ul>
+  </div>
+
+  <div class="section">
+    <h2>Questions or feedback</h2>
+    <p>EjectSeat is operated by Admin-Ace LLC. Reach us at <a href="mailto:enquiries.talkace@gmail.com">enquiries.talkace@gmail.com</a> — we read every message.</p>
+  </div>
+
+  <footer class="site">
+    <div>© Admin-Ace LLC</div>
+    <nav>
+      <a href="/">Home</a>
+      <a href="/privacy.html">Privacy</a>
+      <a href="/terms.html">Terms</a>
+    </nav>
+  </footer>
+
+</div>
+</body>
+</html>
