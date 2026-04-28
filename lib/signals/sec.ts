@@ -165,7 +165,7 @@ export async function fetchEvidenceBundle(
   const targets: FilingTarget[] = [];
 
   // First pass: pick up to 8 relevant filings, newest first
-  for (let i = 0; i < forms.length && targets.length < 8; i++) {
+  for (let i = 0; i < forms.length && targets.length < 4; i++) {
     const form = forms[i];
     if (!FORMS_RELEVANT.has(form)) continue;
     if (!accs[i] || !docs[i]) continue;
@@ -205,8 +205,8 @@ export async function fetchEvidenceBundle(
     if (!raw) return null;
     const stripped = stripHtml(raw);
     const isAnnual = /10-K|20-F/i.test(t.form);
-    const text = stripped.length > 60_000
-      ? (isAnnual ? sliceAroundSections(stripped, 60_000) : stripped.slice(0, 60_000))
+ const text = stripped.length > 30_000
+      ? (isAnnual ? sliceAroundSections(stripped, 30_000) : stripped.slice(0, 30_000))
       : stripped;
     return { accession: t.acc, form: t.form, filingDate: t.date, url, text };
   }))).filter((f): f is FilingEvidence => f !== null);
