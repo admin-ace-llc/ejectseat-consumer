@@ -361,10 +361,17 @@ OUTPUT — return ONLY this JSON object, nothing else.
 Return JSON only. No preamble, no markdown fences, no commentary.`;
 
   try {
+    // ── CHANGED: max_tokens reduced 14k→4k, system prompt cached ──
     const resp = await anthropic.messages.create({
       model:      'claude-sonnet-4-5',
-      max_tokens: 14_000,
-      system:     systemPrompt,
+      max_tokens: 4_000,
+      system: [
+        {
+          type: 'text',
+          text: systemPrompt,
+          cache_control: { type: 'ephemeral' },
+        },
+      ],
       messages:   [{ role: 'user', content: userPrompt }],
     });
 
