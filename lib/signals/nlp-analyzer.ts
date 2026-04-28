@@ -370,7 +370,7 @@ Return JSON only. No preamble, no markdown fences, no commentary.`;
           type: 'text',
           text: systemPrompt,
           cache_control: { type: 'ephemeral' },
-        },
+        } as any,
       ],
       messages:   [{ role: 'user', content: userPrompt }],
     });
