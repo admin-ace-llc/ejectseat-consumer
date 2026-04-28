@@ -353,8 +353,7 @@ OUTPUT — return ONLY this JSON object, nothing else.
 
   "large_employer_flag": boolean (true if headcount >= 50,000),
 
-  "summary": "3-4 sentence brief for a tech worker. Lead with the state verdict and most material finding. Reference programme name, headcount estimate, and dates where known. Use business number formatting ($4.7M, not $4,700,000). Max 60 words. End with 'This reflects confirmed public announcements.' OR 'This is a predictive signal based on public filings — not a confirmed outcome.' depending on whether confirmed_events is populated.",
-
+"summary": "3-4 sentence brief written for someone worried about their job, not a financial analyst. Lead with a plain-English verdict — what does this actually mean for an employee? Avoid jargon like 'forward signals', 'XBRL', 'accession', 'corroboration'. Use conversational language: 'Amazon has been quietly cutting teams' not 'restructuring charges indicate workforce reduction'. Reference programme name, headcount numbers, and dates where known. Max 60 words. End with 'This reflects confirmed public announcements.' OR 'This is a predictive signal based on public filings — not a confirmed outcome.' depending on whether confirmed_events is populated.",
   "reasoning_chain": "your step-by-step reasoning: what you saw in each source, how you weighed them, why you chose this state over adjacent states"
 }
 
