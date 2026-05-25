@@ -17,6 +17,11 @@
 //   Preserved at top level so frontend keeps rendering during flag flips.
 //   `intelligence` object added as new field; old clients ignore it; new UI
 //   lights up the intelligence cards when present.
+//
+// v7.1 CACHE CHANGE:
+//   Layoff risk does not change hour-to-hour. Extended TTLs dramatically
+//   improve response time for repeat searches without sacrificing accuracy.
+//   Anonymous: 24h → 72h | Registered: 6h → 24h
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -122,7 +127,6 @@ function buildAuditSignals(
 ): Signal[] {
   const out: Signal[] = [];
 
-  // Confirmed events as audit rows
   for (const e of intel.confirmed_events) {
     out.push({
       type: 'confirmed_event',
@@ -135,7 +139,6 @@ function buildAuditSignals(
     });
   }
 
-  // Forward signals as audit rows
   for (const s of intel.forward_signals) {
     const tier: Signal['sourceTier'] =
       s.source_ref.includes('reuters') || s.source_ref.includes('bloomberg') ? 'tier_a'
@@ -152,7 +155,6 @@ function buildAuditSignals(
     });
   }
 
-  // Programme signal
   if (intel.programme.name) {
     out.push({
       type: 'programme_detected',
@@ -164,7 +166,6 @@ function buildAuditSignals(
     });
   }
 
-  // Bankruptcy
   if (intel.bankruptcy.detected && intel.bankruptcy.chapter) {
     out.push({
       type: 'bankruptcy_filing',
@@ -177,7 +178,6 @@ function buildAuditSignals(
     });
   }
 
-  // Dedup against legacy audit (which surfaces XBRL line items not caught above)
   const haveTypes = new Set(out.map(s => s.type));
   for (const s of legacyAudit) {
     if (!haveTypes.has(s.type) && out.length < 12) out.push(s);
@@ -186,8 +186,6 @@ function buildAuditSignals(
   return out;
 }
 
-// Build plain-language summary from intelligence (Sonnet writes it already;
-// this is a fallback constructor if Sonnet returned an empty summary)
 function buildFallbackSummary(intel: ComprehensiveIntelligence, companyName: string): string {
   if (intel.summary && intel.summary.length > 20) return intel.summary;
 
@@ -225,11 +223,14 @@ export async function POST(req: NextRequest) {
     }
 
     // Cache check
+    // Layoff risk does not change hour-to-hour — extended TTLs cut cold-score
+    // frequency dramatically without sacrificing accuracy.
+    // Anonymous: 72h | Registered: 24h (was 24h / 6h)
     const { data: cachedCo } = await supabase
       .from('companies').select('*').ilike('name', companyName.trim()).single();
     const cacheAge = cachedCo?.cached_at
       ? (Date.now() - new Date(cachedCo.cached_at).getTime()) / 3_600_000 : Infinity;
-    const cacheTTL = isRegistered ? 6 : 24;
+    const cacheTTL = isRegistered ? 24 : 72;
 
     if (cachedCo && cacheAge < cacheTTL && cachedCo.cached_score !== null) {
       const scoreHistory = await getScoreHistory(cachedCo.id);
@@ -341,7 +342,6 @@ async function runV7Pipeline(
   userId: string | null,
   isRegistered: boolean,
 ) {
-  // Step 1: Fetch everything needed for the bundle in parallel
   const [bundlePart, transcripts, news, legacyAudit, quarterlyStatus] = await Promise.all([
     fetchEvidenceBundle(eligibility.cik!, companyName, 365),
     fetchRecentTranscripts(ticker || null, 2),
@@ -363,10 +363,8 @@ async function runV7Pipeline(
     generatedAt:      new Date().toISOString(),
   };
 
-  // Step 2: Comprehensive Sonnet call
   const intel = await comprehensiveAnalysis(bundle);
 
-  // Step 3: Validate + finalise score
   const signalAwaited = quarterlyStatus?.filingStatus === 'awaited' || quarterlyStatus?.filingStatus === 'overdue';
   const finalised = validateAndFinaliseScore(
     intel,
@@ -374,11 +372,9 @@ async function runV7Pipeline(
     eligibility.isUSListed && eligibility.secFilingFound,
   );
 
-  // Step 4: Build audit-strip signals for UI
   const auditSignals = buildAuditSignals(intel, legacyAudit);
   const confirmedLegacy = confirmedToLegacy(intel);
 
-  // Step 5: Persist
   const companyId = await upsertCompany(
     eligibility, companyName, ticker,
     finalised.score, finalised.band, finalised.state,
@@ -428,7 +424,6 @@ async function runV7Pipeline(
     }).eq('id', companyId);
   }
 
-  // Prediction tracking
   if (finalised.score >= 70 && eligibility.secFilingFound) {
     await supabase.from('predictions').insert({
       company_name: companyName, ticker,
@@ -508,10 +503,6 @@ async function runV5Pipeline(
   userId: string | null,
   isRegistered: boolean,
 ) {
-  // This is a compact v5 path using our audit-only signal modules. It WILL
-  // produce lower fidelity than v7 — the purpose is to stay functional when
-  // the flag is off, not to perfectly replicate v5 behaviour.
-
   const [auditSignals, mediaSignals, headlines, quarterlyStatus] = await Promise.all([
     collectSECSignals(eligibility.cik!, companyName, isRegistered),
     collectMediaSignals(companyName),
@@ -520,7 +511,6 @@ async function runV5Pipeline(
       .catch(() => null),
   ]);
 
-  // Use Sonnet state classification (legacy path)
   const filingText = '';
   const stateResult = await classifyCompanyState(companyName, filingText, headlines);
   const v7State = normaliseLegacyState(stateResult.state);
