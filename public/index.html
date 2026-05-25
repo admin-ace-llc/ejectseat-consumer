@@ -236,6 +236,238 @@ nav.site a:hover { color: var(--text); }
 .disclaimer .line { margin: 0 0 4px; }
 .disclaimer .line:last-child { margin-bottom: 0; }
 
+/* ═══ HIGH RISK WATCH ════════════════════════════════════════════════════ */
+/* Self-populates from user searches. Hides when no HIGH-band scores exist. */
+
+.hrw-section {
+  margin-top: 28px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  display: none; /* shown by JS when entries exist */
+}
+
+.hrw-header {
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
+}
+
+.hrw-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--red-text);
+  margin-bottom: 6px;
+}
+
+.hrw-live-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  animation: hrwPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes hrwPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+.hrw-title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hrw-title {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 0;
+  color: var(--text);
+}
+
+.hrw-count-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  background: var(--red-soft);
+  color: var(--red-text);
+  border: 1px solid #fecaca;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.hrw-sub {
+  color: var(--text-dim);
+  font-size: 13.5px;
+  margin: 5px 0 0;
+  line-height: 1.5;
+}
+
+/* List */
+.hrw-list { padding: 0; }
+
+.hrw-card {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(6px);
+  transition: background 120ms var(--ease-gentle);
+}
+.hrw-card:last-child { border-bottom: 0; }
+.hrw-card.in {
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity 320ms var(--ease-out),
+    transform 320ms var(--ease-out),
+    background 120ms var(--ease-gentle);
+}
+.hrw-card:hover { background: var(--panel-alt); }
+
+/* Left accent stripe by state */
+.hrw-stripe {
+  width: 4px;
+  flex-shrink: 0;
+  border-radius: 0;
+}
+.hrw-stripe.ACTIVE { background: var(--red); }
+.hrw-stripe.LIKELY { background: var(--amber); }
+.hrw-stripe.WATCH  { background: var(--accent); }
+.hrw-stripe.CLEAR  { background: var(--green); }
+
+.hrw-body {
+  flex: 1;
+  padding: 15px 20px 14px;
+  min-width: 0;
+}
+
+.hrw-top-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.hrw-left-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.hrw-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+}
+.hrw-badge.ACTIVE { background: var(--red-soft);   color: var(--red-text);   border-color: #fecaca; }
+.hrw-badge.LIKELY { background: var(--amber-soft); color: var(--amber-text); border-color: #fde68a; }
+.hrw-badge.WATCH  { background: var(--accent-soft);color: var(--accent-text);border-color: #bfdbfe; }
+.hrw-badge.CLEAR  { background: var(--green-soft); color: var(--green-text); border-color: #a7f3d0; }
+
+.hrw-score-tag {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.hrw-score-tag span { color: var(--text-faint); font-weight: 400; font-size: 11px; }
+
+.hrw-name {
+  font-size: 15.5px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-bottom: 5px;
+}
+.hrw-name .tk {
+  color: var(--text-faint);
+  font-weight: 400;
+  font-size: 13px;
+  margin-left: 6px;
+}
+
+/* Reasoning snippet — the key differentiator */
+.hrw-signal {
+  font-size: 13px;
+  color: var(--text-dim);
+  line-height: 1.55;
+  margin-bottom: 9px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.hrw-signal em {
+  font-style: normal;
+  color: var(--text);
+  font-weight: 500;
+}
+
+.hrw-foot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.hrw-age {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-weight: 500;
+}
+
+.hrw-cta-link {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+  transition: gap 120ms var(--ease-gentle), color 120ms var(--ease-gentle);
+}
+.hrw-card:hover .hrw-cta-link { gap: 6px; color: var(--accent-dark); }
+
+/* Loading + empty states */
+.hrw-skeleton { padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; }
+.hrw-skel-row { height: 72px; background: linear-gradient(90deg, var(--panel-alt) 25%, var(--border) 50%, var(--panel-alt) 75%); background-size: 200% 100%; border-radius: var(--radius); animation: hrwShimmer 1.4s infinite; }
+@keyframes hrwShimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
 /* ═══ LANDINGZONE ═════════════════════════════════════════════════════════ */
 .lz-section { margin-top: 36px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-md); box-shadow: var(--shadow); overflow: hidden; }
 .lz-header { padding: 24px 28px 0; }
@@ -313,6 +545,13 @@ footer.site a { color: var(--text-dim); }
   .gauge-score { font-size: 36px; }
   .detail-grid { grid-template-columns: 1fr; }
 
+  /* HRW responsive */
+  .hrw-header { padding: 18px 20px 14px; }
+  .hrw-title { font-size: 18px; }
+  .hrw-body { padding: 13px 16px 12px; }
+  .hrw-name { font-size: 14.5px; }
+  .hrw-signal { -webkit-line-clamp: 3; }
+
   .lz-header { padding: 20px 20px 0; }
   .lz-title { font-size: 19px; }
   .lz-filters { padding: 16px 20px; }
@@ -329,6 +568,8 @@ footer.site a { color: var(--text-dim); }
 
 @media (max-width: 400px) {
   .hero h1 { font-size: 24px; }
+  .hrw-header { padding: 14px 16px 12px; }
+  .hrw-body { padding: 12px 14px; }
   .lz-filters { padding: 14px 16px; }
   .lz-header { padding: 16px 16px 0; }
   .lz-results { padding: 12px 16px 16px; }
@@ -379,6 +620,24 @@ footer.site a { color: var(--text-dim); }
 
   <!-- ═══ RESULT PANEL (hidden until search) ═══════════════════════════ -->
   <div class="result-panel" id="result"></div>
+
+  <!-- ═══ HIGH RISK WATCH ══════════════════════════════════════════════ -->
+  <!-- Self-populates from user searches. Hidden on fresh deployments.   -->
+  <!-- Refreshes every 5 min client-side; server cache is 30 min.        -->
+  <section class="hrw-section" id="hrw-section" aria-label="Elevated Risk Watch">
+    <div class="hrw-header">
+      <div class="hrw-eyebrow">
+        <span class="hrw-live-dot" aria-hidden="true"></span>
+        Live · updates as companies are scored
+      </div>
+      <div class="hrw-title-row">
+        <h2 class="hrw-title">Elevated Risk Watch</h2>
+        <span class="hrw-count-badge" id="hrw-count"></span>
+      </div>
+      <p class="hrw-sub">Companies recently scored HIGH risk — drawn from SEC filings, earnings call transcripts, and Tier A/B media. Click any to run a fresh score.</p>
+    </div>
+    <div class="hrw-list" id="hrw-list" role="list"></div>
+  </section>
 
   <!-- ═══ LANDINGZONE (always visible, upfront) ════════════════════════ -->
   <section class="lz-section" id="lz-section">
@@ -472,11 +731,25 @@ function fmtRange(lo, hi) { if (lo == null && hi == null) return '—'; if (lo !
 function fmtPct(v, dp = 0) { if (v == null || !isFinite(v)) return '—'; return `${(Math.abs(v) <= 1.5 ? v * 100 : v).toFixed(dp)}%`; }
 function formatDate(iso) { if (!iso) return '—'; const d = new Date(iso); if (!isFinite(d.getTime())) return '—'; return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
 
+/* ═══ UTILS ════════════════════════════════════════════════════════════ */
 const $ = (id) => document.getElementById(id);
 const h = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
 function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
 function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
 function beacon(eventType, payload) { try { fetch('/api/beacon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventType, payload: payload || {} }) }); } catch {} }
+
+/* Age formatting for HRW cards */
+function fmtAge(iso) {
+  if (!iso) return '';
+  try {
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+    if (days <= 0)  return 'Scored today';
+    if (days === 1) return '1 day ago';
+    if (days < 7)   return `${days} days ago`;
+    const wks = Math.round(days / 7);
+    return `${wks} ${wks === 1 ? 'week' : 'weeks'} ago`;
+  } catch { return ''; }
+}
 
 /* ═══ SEARCH ═══════════════════════════════════════════════════════════ */
 const suggestEl = $('suggestions'), queryEl = $('q');
@@ -558,7 +831,6 @@ async function runScore(companyName, ticker) {
     if (!res.ok) throw new Error(data.error || 'Score request failed');
     stopLoading();
     render(data);
-    // If band changed relative to LandingZone ordering, re-sort LandingZone
     if (state.lastRisk?.band === 'HIGH') refreshLandingZoneSort();
   } catch (err) {
     stopLoading();
@@ -669,6 +941,11 @@ function render(data) {
   }
 
   $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  // If this result is HIGH band, refresh the HRW list after DB write settles
+  if (band === 'HIGH') {
+    setTimeout(fetchHighRiskWatch, 2000);
+  }
 }
 
 function confidenceLabel(c) {
@@ -767,6 +1044,98 @@ function animateGauge(targetScore, stateClass) {
   requestAnimationFrame(tick);
 }
 
+/* ═══ HIGH RISK WATCH ══════════════════════════════════════════════════ */
+
+let hrwPollTimer = null;
+
+async function fetchHighRiskWatch() {
+  try {
+    const res = await fetch('/api/high-risk');
+    if (!res.ok) return; // silently fail — section stays in current state
+    const data = await res.json();
+    renderHighRiskWatch(data.companies || []);
+  } catch {
+    // Network error — leave section as-is (don't hide if we had data)
+  }
+}
+
+function renderHighRiskWatch(companies) {
+  const section = $('hrw-section');
+  const list    = $('hrw-list');
+  const countEl = $('hrw-count');
+  if (!section || !list) return;
+
+  if (!companies || companies.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  // Show section
+  section.style.display = 'block';
+
+  // Update count badge
+  if (countEl) {
+    countEl.textContent = `${companies.length} compan${companies.length === 1 ? 'y' : 'ies'}`;
+  }
+
+  // Render cards
+  list.innerHTML = companies.slice(0, 20).map(c => {
+    const stateClass  = ['ACTIVE','LIKELY','WATCH','CLEAR'].includes(c.state) ? c.state : 'ACTIVE';
+    const age         = fmtAge(c.scoredAt);
+
+    // Reasoning snippet: prefer key_signal, fall back to programme name, then generic
+    let signalText = '';
+    if (c.keySignal) {
+      signalText = c.keySignal;
+    } else if (c.programmeName) {
+      signalText = `Named restructuring programme "${c.programmeName}" detected in SEC filings.`;
+    } else {
+      signalText = 'Elevated risk signals detected in SEC filings and media coverage.';
+    }
+
+    // Highlight the score bar colour via --hrw-score-color for the score tag
+    const scoreColor = stateClass === 'ACTIVE' ? 'var(--red-text)'
+                     : stateClass === 'LIKELY' ? 'var(--amber-text)'
+                     : stateClass === 'WATCH'  ? 'var(--accent-text)'
+                     : 'var(--green-text)';
+
+    return `<div class="hrw-card" role="listitem" onclick="hrwActivate(${JSON.stringify(c.name)}, ${JSON.stringify(c.ticker || '')})" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')hrwActivate(${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})">
+  <div class="hrw-stripe ${stateClass}"></div>
+  <div class="hrw-body">
+    <div class="hrw-top-row">
+      <div class="hrw-left-meta">
+        <span class="hrw-badge ${stateClass}">${stateClass}</span>
+        <span class="hrw-score-tag" style="color:${scoreColor}">${c.score || 0}<span>/100</span></span>
+      </div>
+    </div>
+    <div class="hrw-name">${h(c.name)}${c.ticker ? `<span class="tk">${h(c.ticker)}</span>` : ''}</div>
+    <div class="hrw-signal">${h(signalText)}</div>
+    <div class="hrw-foot-row">
+      <span class="hrw-age">${h(age)}</span>
+      <span class="hrw-cta-link">Score now →</span>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+
+  // Stagger animation
+  requestAnimationFrame(() => {
+    list.querySelectorAll('.hrw-card').forEach((card, i) => {
+      setTimeout(() => card.classList.add('in'), i * 55);
+    });
+  });
+}
+
+function hrwActivate(companyName, ticker) {
+  if (!companyName) return;
+  queryEl.value = companyName;
+  closeSuggestions();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  beacon('hrw_company_clicked', { companyName, ticker });
+  // Short delay so scroll completes before loading panel appears
+  setTimeout(() => runScore(companyName, ticker || undefined), 300);
+}
+
 /* ═══ LANDINGZONE ══════════════════════════════════════════════════════ */
 const ROLE_FUNCTIONS = [
   { key: 'software_engineering', label: 'Engineering' },
@@ -792,15 +1161,12 @@ function roleLabel(funcKey, tierKey) {
 }
 
 function initLandingZone() {
-  // Render chip filters once
   $('func-chips').innerHTML = ROLE_FUNCTIONS.map(r => `<span class="chip ${state.prefs.roleFunction === r.key ? 'selected' : ''}" data-func="${h(r.key)}">${h(r.label)}</span>`).join('');
   $('tier-chips').innerHTML = ROLE_TIERS.map(r => `<span class="chip ${state.prefs.roleTier === r.key ? 'selected' : ''}" data-tier="${h(r.key)}">${h(r.label)}</span>`).join('');
 
-  // Set selects / toggles to saved prefs
   $('country-select').value = state.prefs.country;
   $('remote-toggle').checked = state.prefs.remote;
 
-  // Event bindings (one-time, via delegation)
   $('country-select').addEventListener('change', (e) => {
     state.prefs.country = e.target.value; savePrefs();
     beacon('location_changed', { country: state.prefs.country });
@@ -826,7 +1192,6 @@ function initLandingZone() {
     fetchLandingZone();
   });
 
-  // Initial fetch: only if we have enough filters to return meaningful results
   if (state.prefs.roleFunction && state.prefs.roleTier) fetchLandingZone();
   else renderLandingZoneEmpty();
 }
@@ -840,7 +1205,6 @@ async function fetchLandingZone() {
     renderLandingZoneEmpty();
     return;
   }
-  // Update title to reflect current selection
   $('lz-title').textContent = `Companies hiring ${roleLabel(state.prefs.roleFunction, state.prefs.roleTier)}`;
   const locationBits = [];
   locationBits.push(countryLabel(state.prefs.country));
@@ -860,10 +1224,7 @@ async function fetchLandingZone() {
   } catch { lzCurrentCompanies = []; renderLandingZoneResults(); }
 }
 
-function refreshLandingZoneSort() {
-  // Re-apply risk-aware sort after a search result changes band
-  renderLandingZoneResults();
-}
+function refreshLandingZoneSort() { renderLandingZoneResults(); }
 
 function renderLandingZoneResults() {
   let companies = [...lzCurrentCompanies];
@@ -910,6 +1271,10 @@ function countryLabel(code) {
   beacon('page_view', { path: window.location.pathname });
   initLandingZone();
   queryEl.focus();
+
+  // High Risk Watch — initial fetch + 5-min polling
+  fetchHighRiskWatch();
+  hrwPollTimer = setInterval(fetchHighRiskWatch, 5 * 60 * 1000);
 })();
 </script>
 </body>
