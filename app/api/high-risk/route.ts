@@ -79,12 +79,11 @@ async function buildHighRiskList(): Promise<HighRiskEntry[]> {
   const seen = new Map<string, HighRiskEntry>();
 
   for (const row of data) {
-    // Supabase returns the FK join as a single object (not array) for n:1 FKs
-    const company = row.companies as {
-      name: string;
-      legal_name?: string | null;
-      ticker?: string | null;
-    } | null;
+    // Supabase's generated types infer the FK join as an array; cast via unknown
+    // then normalise — at runtime it arrives as a single object for n:1 FKs.
+    const raw = row.companies as unknown;
+    const company: { name: string; legal_name?: string | null; ticker?: string | null } | null =
+      Array.isArray(raw) ? (raw[0] ?? null) : (raw as any) ?? null;
 
     if (!company?.name) continue;
 
