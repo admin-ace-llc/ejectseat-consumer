@@ -7,22 +7,22 @@
 //
 // Exports:
 //   - fetchEvidenceBundle(cik, companyName) → EvidenceBundle for Sonnet
-//   - fetchLegacyAuditSignals(cik) → Signal[] for the UI audit strip (human-
-//     readable list of what was in the bundle, NOT used for scoring in v7)
+//   - fetchLegacyAuditSignals(cik) → Signal[] for the UI audit strip
 //   - collectSECSignals(...) → thin wrapper preserved for v5 fallback path
-//     when USE_COMPREHENSIVE_V2=false
 //
-// 8-K / 6-K / NT filings are fetched WITHOUT Item-number filtering — the
-// full text goes to Sonnet which decides what matters. This is the key
-// architectural fix for Snap-type cases where a layoff 8-K was filed under
-// an Item number we weren't scanning.
+// v7.1 SPEED CHANGES:
+//   - FETCH_TIMEOUT_MS: 8s → 5s  (fail faster on slow endpoints)
+//   - fetchText cap: 300K → 150K (still far more than we slice)
+//   - Per-filing text budget: 30K → 12K chars
+//     sliceAroundSections already targets restructuring-relevant sections;
+//     12K is sufficient and cuts Sonnet context by ~60%.
 
 import type {
   Signal, EvidenceBundle, FilingEvidence, HeadcountRecord,
 } from '@/types';
 import { fmtUSD } from '@/lib/format';
 
-const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkace@gmail.com)';
+const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkake@gmail.com)';
 const EDGAR = 'https://data.sec.gov';
 
 const FORMS_RELEVANT = new Set([
@@ -34,7 +34,8 @@ const FORMS_RELEVANT = new Set([
   'NT 10-K', 'NT 10-Q', 'NT 20-F',
 ]);
 
-const FETCH_TIMEOUT_MS = 8_000;
+// v7.1: reduced from 8_000 — fail faster on slow EDGAR endpoints
+const FETCH_TIMEOUT_MS = 5_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Low-level fetch helpers
@@ -51,7 +52,7 @@ async function fetchJSON(url: string): Promise<any> {
   } catch { return null; }
 }
 
-async function fetchText(url: string, maxChars = 80_000): Promise<string> {
+async function fetchText(url: string, maxChars = 150_000): Promise<string> {
   try {
     const controller = new AbortController();
     const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -164,7 +165,6 @@ export async function fetchEvidenceBundle(
   type FilingTarget = { acc: string; form: string; date: string; doc: string };
   const targets: FilingTarget[] = [];
 
-  // First pass: pick up to 8 relevant filings, newest first
   for (let i = 0; i < forms.length && targets.length < 4; i++) {
     const form = forms[i];
     if (!FORMS_RELEVANT.has(form)) continue;
@@ -173,7 +173,6 @@ export async function fetchEvidenceBundle(
     targets.push({ acc: accs[i], form, date: dates[i], doc: docs[i] });
   }
 
-  // Ensure latest 10-K / 10-Q / 20-F always included even if older than lookback
   const hasAnnual = targets.some(t => t.form === '10-K' || t.form === '20-F');
   const hasInterim = targets.some(t => t.form === '10-Q' || t.form === '6-K');
   if (!hasAnnual) {
@@ -197,16 +196,20 @@ export async function fetchEvidenceBundle(
     }
   }
 
-  // Fetch filings in parallel; strip HTML; slice annual filings
+  // v7.1: per-filing text budget reduced 30K → 12K.
+  // sliceAroundSections targets restructuring-relevant sections — 12K is
+  // sufficient for those sections and cuts Sonnet input context by ~60%.
+  const TEXT_BUDGET = 12_000;
+
   const filings: FilingEvidence[] = (await Promise.all(targets.map(async (t): Promise<FilingEvidence | null> => {
     const accClean = t.acc.replace(/-/g, '');
     const url = `${EDGAR}/Archives/edgar/data/${cikNum}/${accClean}/${t.doc}`;
-    const raw = await fetchText(url, 300_000);
+    const raw = await fetchText(url, 150_000);
     if (!raw) return null;
     const stripped = stripHtml(raw);
     const isAnnual = /10-K|20-F/i.test(t.form);
- const text = stripped.length > 30_000
-      ? (isAnnual ? sliceAroundSections(stripped, 30_000) : stripped.slice(0, 30_000))
+    const text = stripped.length > TEXT_BUDGET
+      ? (isAnnual ? sliceAroundSections(stripped, TEXT_BUDGET) : stripped.slice(0, TEXT_BUDGET))
       : stripped;
     return { accession: t.acc, form: t.form, filingDate: t.date, url, text };
   }))).filter((f): f is FilingEvidence => f !== null);
@@ -231,9 +234,8 @@ export async function fetchEvidenceBundle(
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC — fetchLegacyAuditSignals
-// In v7, this produces a human-readable list of what's in the evidence bundle
-// for the UI audit strip. These do NOT drive scoring — Sonnet does. They're
-// displayed so users can see what the system looked at.
+// In v7, produces a human-readable list of what's in the evidence bundle
+// for the UI audit strip. Do NOT drive scoring — Sonnet does.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
@@ -250,7 +252,6 @@ export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
   const usGaap = facts?.facts?.['us-gaap'] || {};
   const ifrs   = facts?.facts?.['ifrs-full'] || {};
 
-  // Restructuring charges (surface only — no scoring in v7)
   const keys = [
     { ns: usGaap, key: 'RestructuringCharges' },
     { ns: usGaap, key: 'RestructuringCostsAndAssetImpairmentCharges' },
@@ -280,7 +281,6 @@ export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
     }
   }
 
-  // Headcount drop
   const hc = (usGaap['EntityNumberOfEmployees']?.units?.pure || [])
     .filter((e: any) => (e.form === '10-K' || e.form === '20-F') && e.val > 0)
     .sort((a: any, b: any) => Date.parse(b.filed) - Date.parse(a.filed));
@@ -300,7 +300,6 @@ export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
     }
   }
 
-  // Sustained losses
   const losses = (usGaap['NetIncomeLoss']?.units?.USD || [])
     .filter((e: any) => e.form === '10-K' || e.form === '20-F')
     .sort((a: any, b: any) => Date.parse(b.filed) - Date.parse(a.filed))
@@ -318,7 +317,6 @@ export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
     });
   }
 
-  // NT filings
   const recent = submissions?.filings?.recent;
   if (recent) {
     const forms = recent.form || [];
@@ -339,7 +337,6 @@ export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
     }
   }
 
-  // Recent 8-K / 6-K (just the existence — Sonnet reads the content)
   if (recent) {
     const forms = recent.form || [];
     const dates = recent.filingDate || [];
@@ -365,9 +362,6 @@ export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // COMPATIBILITY — v5 collectSECSignals
-// Thin wrapper so the feature-flag fallback path still compiles/runs.
-// Delegates to fetchLegacyAuditSignals. Does NOT score — v5 fallback path
-// in engine.ts normalises rawPoints from type hints.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function collectSECSignals(
@@ -378,7 +372,6 @@ export async function collectSECSignals(
   return fetchLegacyAuditSignals(cik);
 }
 
-// Re-export for the v5 fallback orchestrator
 export async function fetchFullFilingsForAnalysis(cik: string): Promise<{
   companyFacts: any | null;
   filings: FilingEvidence[];
