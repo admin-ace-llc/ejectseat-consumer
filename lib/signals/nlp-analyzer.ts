@@ -1,35 +1,28 @@
-// lib/signals/nlp-analyzer.ts — EjectSeat Consumer v7
+// lib/signals/nlp-analyzer.ts — EjectSeat Consumer v7.2
 //
-// ARCHITECTURE CHANGE:
+// ARCHITECTURE:
 //   v5: 5+ Haiku calls (prefilter / classify / verify / analyze / summarise).
 //   v7: ONE comprehensive Sonnet call that reads the full evidence bundle and
 //       returns the intelligence object.
 //
-// STRICT-MODE GUARDRAILS (user-requested):
-//   1. Context isolation — system prompt forbids referencing anything not in bundle.
-//   2. Evidence binding — every factual claim must cite source_ref + source_quote.
-//   3. Structured output — JSON schema enforced; free text rejected.
+// v7.2 CHANGES:
+//   - Model upgraded: claude-sonnet-4-5 → claude-sonnet-4-6
+//   - New forward-looking signal types:
+//       hiring_freeze, executive_exodus, office_closure,
+//       product_discontinuation, debt_covenant_risk
+//   - New output field: predictive_horizon ("30d"|"60d"|"90d"|"180d+"|null)
+//     — asks Sonnet to estimate WHEN the risk is most likely to materialise
+//   - Stronger system prompt emphasis on predictive vs confirmatory separation
+//   - max_tokens: 1_500 → 2_000 to accommodate new fields
+//   - normaliseIntelligence updated to handle predictive_horizon
+//
+// STRICT-MODE GUARDRAILS (unchanged):
+//   1. Context isolation — system prompt forbids referencing training data.
+//   2. Evidence binding — every claim must cite source_ref + source_quote.
+//   3. Structured output — JSON schema enforced.
 //   4. Confidence floor — high ≥3 sources; medium ≥2; 1 = low.
 //   5. Post-validator — strips unattributed claims, enforces confidence floor.
 //   6. No hard overrides — even bankruptcy earns its state from evidence.
-//
-// v7.1 SPEED CHANGES:
-//   - max_tokens: 4_000 → 1_500
-//     The JSON response schema fits comfortably in 1,500 tokens.
-//     Reducing this cuts Sonnet's generation time by ~60%.
-//   - Transcript budget: 8_000 → 5_000 chars per transcript
-//     Q&A is still prioritised at 60% of budget.
-//   - XBRL facts compact: 6_000 → 4_000 chars
-//     Priority line items are concise; 4K is sufficient.
-//
-// EXPORTS:
-//   - comprehensiveAnalysis(bundle) → ComprehensiveIntelligence  (v7 primary)
-//   - classifyCompanyState(...)     → preserved for v5 fallback
-//   - verifyXBRLSignal(...)         → preserved for v5 fallback
-//   - analyzeText(...)              → preserved for v5 fallback
-//   - generateSummary(...)          → preserved for v5 fallback
-//   - prefilterFilingText(...)      → preserved for v5 fallback
-//   - SEVERITY_TO_POINTS            → preserved constant
 
 import Anthropic from '@anthropic-ai/sdk';
 import type {
@@ -37,7 +30,7 @@ import type {
   IntelligenceConfirmedEvent, IntelligenceForwardSignal,
   ProgrammeIntelligence, HeadcountEstimate, FunctionRiskMap,
   BankruptcyFiling, WavesIntelligence, ConfidenceTier,
-  TrajectoryDirection, ConfirmedEvent,
+  TrajectoryDirection, ConfirmedEvent, PredictiveHorizon,
 } from '@/types';
 import { fmtUSD, fmtCount } from '@/lib/format';
 import { compactTranscriptForPrompt } from '@/lib/signals/transcripts';
@@ -57,6 +50,17 @@ const STATE_BANDS: Record<CompanyState, { floor: number; ceiling: number }> = {
   LIKELY: { floor: 45, ceiling: 78 },
   ACTIVE: { floor: 60, ceiling: 90 },
 };
+
+// v7.2: Full list of forward signal types including new predictive indicators
+const VALID_SIGNAL_TYPES = [
+  'activist_pressure', 'sustained_losses', 'ceo_language', 'cost_pressure',
+  'headcount_drop', 'impairment', 'nt_filing', 'strategic_distress',
+  'profitability_pivot', 'restructuring_charge',
+  // v7.2 additions
+  'hiring_freeze', 'executive_exodus', 'office_closure',
+  'product_discontinuation', 'debt_covenant_risk',
+  'other',
+];
 
 export type LegacyCompanyState = 'CLEAR' | 'WATCHING' | 'ACTIVE' | 'ACTIVE_MULTI_YEAR' | 'CONTINUATION_RISK';
 
@@ -114,7 +118,6 @@ function safeParseJSON<T>(text: string, fallback: T): T {
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Compact the companyFacts XBRL JSON for the prompt (token budget)
-// v7.1: reduced from 6_000 → 4_000 chars — priority line items are concise
 // ─────────────────────────────────────────────────────────────────────────────
 
 function compactCompanyFacts(facts: any): string {
@@ -133,6 +136,10 @@ function compactCompanyFacts(facts: any): string {
     'ImpairmentOfIntangibleAssetsFinitelived',
     'RestructuringProvision',
     'EmployeeBenefitsExpense',
+    // v7.2: additional XBRL line items for new signal types
+    'OperatingLeaseLiability',
+    'LongTermDebt',
+    'DebtInstrumentCarryingAmount',
   ]);
 
   for (const taxonomy of ['us-gaap', 'ifrs-full', 'dei']) {
@@ -160,7 +167,6 @@ function compactCompanyFacts(facts: any): string {
   }
 
   if (lines.length === 0) return '(no relevant XBRL line items in last 2 years)';
-  // v7.1: reduced from 6_000 → 4_000
   return lines.join('\n').slice(0, 4_000);
 }
 
@@ -189,7 +195,6 @@ export async function comprehensiveAnalysis(bundle: EvidenceBundle): Promise<Com
     `── FILING: ${f.form} | Filed ${f.filingDate} | accession=${f.accession} | ${f.url} ──\n${f.text}`
   ).join('\n\n') || '(no recent SEC filings retrieved)';
 
-  // v7.1: transcript budget reduced 8_000 → 5_000 chars per transcript
   const transcriptsBlock = bundle.transcripts.length > 0
     ? bundle.transcripts.map(t => compactTranscriptForPrompt(t, 5_000)).join('\n\n')
     : '(no earnings call transcripts available for this ticker)';
@@ -239,7 +244,24 @@ SEVERITY TIERS for forward_signals:
 - 3: Cost/efficiency focus ("cost discipline", "path to profitability")
 - 4: Cautious hiring ("thoughtful about hiring", "pausing headcount growth")
 
-Today's date: ${todayISO}. Use this to assess recency.`;
+FORWARD-LOOKING SIGNAL IDENTIFICATION (critical for predictive accuracy):
+These signal types are LEADING INDICATORS — they predict risk before a formal announcement:
+- hiring_freeze: Explicit statements about pausing, freezing, or substantially reducing new hires. Quote the exact language. This is one of the strongest leading indicators — companies typically freeze hiring 60-90 days before announcing layoffs.
+- executive_exodus: CFO, CTO, CRO, CPO, or multiple VPs departing within a 3-month window. Cross-reference 8-K Item 5.02 filings or news. Clustered departures signal instability.
+- office_closure: Lease terminations in 10-K/10-Q, facility consolidation language, subletting office space. Often precedes or accompanies headcount reductions.
+- product_discontinuation: Sunset of product lines, deprecated features, market exits. Each discontinued product line implies a headcount exposure in that area.
+- debt_covenant_risk: Requests for covenant waivers, amendments to credit facilities, NT (non-timely) filing patterns. Financial stress precedes operational cuts.
+- profitability_pivot: CEO language about "path to profitability", "operating leverage", "right-sizing the cost structure" — these phrases in earnings Q&A are strong predictors.
+
+PREDICTIVE HORIZON:
+Based on the combination of signals, estimate WHEN the risk is most likely to materialise as a formal announcement:
+- "30d": Active programme in motion or imminent announcement signalled
+- "60d": Hiring freeze in effect + financial stress — typical pre-announcement window
+- "90d": Multiple WATCH signals converging — standard restructuring planning cycle
+- "180d+": Early-stage indicators only, or stable WATCH with no acceleration
+- null: CLEAR state or insufficient data to estimate
+
+Today's date: ${todayISO}. Use this to assess recency and compute the horizon.`;
 
   const userPrompt = `Analyse the evidence bundle for ${bundle.company}${bundle.ticker ? ` (${bundle.ticker})` : ''}.
 
@@ -292,8 +314,8 @@ OUTPUT — return ONLY this JSON object, nothing else.
 
   "forward_signals": [
     {
-      "signal_type": "activist_pressure" | "sustained_losses" | "ceo_language" | "cost_pressure" | "headcount_drop" | "impairment" | "nt_filing" | "strategic_distress" | "profitability_pivot" | "restructuring_charge" | "other",
-      "description": "what the signal is",
+      "signal_type": "activist_pressure" | "sustained_losses" | "ceo_language" | "cost_pressure" | "headcount_drop" | "impairment" | "nt_filing" | "strategic_distress" | "profitability_pivot" | "restructuring_charge" | "hiring_freeze" | "executive_exodus" | "office_closure" | "product_discontinuation" | "debt_covenant_risk" | "other",
+      "description": "what the signal is and why it is predictive",
       "source_ref": "accession/URL/tier",
       "source_quote": "direct quote 10-200 chars",
       "severity": 1 | 2 | 3 | 4,
@@ -350,21 +372,22 @@ OUTPUT — return ONLY this JSON object, nothing else.
   },
 
   "trajectory": "escalating" | "stable" | "completing" | "unknown",
+  "predictive_horizon": "30d" | "60d" | "90d" | "180d+" | null,
   "large_employer_flag": boolean,
 
-  "summary": "3-4 sentence brief written for someone worried about their job. Lead with the plain-English verdict. Use conversational language. Reference programme name, headcount numbers, and dates where known. Max 60 words. End with 'This reflects confirmed public announcements.' OR 'This is a predictive signal based on public filings — not a confirmed outcome.'",
-  "reasoning_chain": "your step-by-step reasoning: what you saw in each source, how you weighed them, why you chose this state"
+  "summary": "3-4 sentence brief written for someone worried about their job. Lead with the plain-English verdict. Distinguish clearly between confirmed events and predictive signals — never conflate the two. If there are forward-looking indicators, name them (e.g. 'The company froze hiring in Q2 and the CFO departed — both are leading indicators'). Use conversational language. Reference programme name, headcount numbers, and dates where known. Max 60 words. End with 'This reflects confirmed public announcements.' OR 'This is a predictive signal based on public filings — not a confirmed outcome.'",
+  "reasoning_chain": "your step-by-step reasoning: what you saw in each source, how you weighted confirmed vs predictive signals, why you chose this state and predictive horizon"
 }
 
 Return JSON only. No preamble, no markdown fences, no commentary.`;
 
   try {
-    // v7.1: max_tokens reduced 4_000 → 1_500
-    // The JSON schema fits in ~800-1200 tokens; 1_500 gives comfortable headroom
-    // without the generation overhead of a 4K ceiling Sonnet never needs.
+    // v7.2: max_tokens raised 1_500 → 2_000 for new fields (predictive_horizon,
+    // additional signal types). The expanded schema fits in ~1,200-1,600 tokens;
+    // 2,000 gives headroom without significant latency overhead.
     const resp = await anthropic.messages.create({
-      model:      'claude-sonnet-4-5',
-      max_tokens: 1_500,
+      model:      'claude-sonnet-4-6',
+      max_tokens: 2_000,
       system: [
         {
           type: 'text',
@@ -430,6 +453,7 @@ function emptyIntelligence(): ComprehensiveIntelligence {
     },
     waves: { waves_confirmed: 0, further_waves_signal: null, evidence_quote: null, confidence: 'low' },
     trajectory: 'unknown',
+    predictive_horizon: null,
     large_employer_flag: false,
     summary: '',
     reasoning_chain: '',
@@ -449,6 +473,11 @@ function normaliseIntelligence(raw: any): ComprehensiveIntelligence {
   const rawScore = typeof raw.score === 'number' ? raw.score : band.floor;
   const score = Math.max(band.floor, Math.min(band.ceiling, Math.round(rawScore)));
 
+  const validHorizons: PredictiveHorizon[] = ['30d', '60d', '90d', '180d+', null];
+  const predictive_horizon: PredictiveHorizon = validHorizons.includes(raw.predictive_horizon)
+    ? raw.predictive_horizon
+    : null;
+
   return {
     state,
     score,
@@ -467,6 +496,7 @@ function normaliseIntelligence(raw: any): ComprehensiveIntelligence {
     waves: normaliseWaves(raw.waves),
     trajectory: ['escalating','stable','completing','unknown'].includes(raw.trajectory)
       ? raw.trajectory : 'unknown',
+    predictive_horizon,
     large_employer_flag: !!raw.large_employer_flag,
     summary: typeof raw.summary === 'string' ? raw.summary.trim() : '',
     reasoning_chain: typeof raw.reasoning_chain === 'string' ? raw.reasoning_chain.trim() : '',
@@ -496,11 +526,8 @@ function normaliseConfirmedEvent(e: any): IntelligenceConfirmedEvent | null {
 function normaliseForwardSignal(s: any): IntelligenceForwardSignal | null {
   if (!s || typeof s !== 'object') return null;
   if (!s.description || !s.source_ref || !s.source_quote) return null;
-  const validTypes = ['activist_pressure','sustained_losses','ceo_language','cost_pressure',
-    'headcount_drop','impairment','nt_filing','strategic_distress','profitability_pivot',
-    'restructuring_charge','other'];
   return {
-    signal_type:     validTypes.includes(s.signal_type) ? s.signal_type : 'other',
+    signal_type:     VALID_SIGNAL_TYPES.includes(s.signal_type) ? s.signal_type : 'other',
     description:     String(s.description).trim(),
     source_ref:      String(s.source_ref).trim(),
     source_quote:    String(s.source_quote).trim().slice(0, 400),
@@ -591,7 +618,7 @@ function normaliseWaves(w: any): WavesIntelligence {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST-VALIDATORS — strict-mode guardrails
+// POST-VALIDATORS — strict-mode guardrails (unchanged from v7)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBundle): ComprehensiveIntelligence {
@@ -699,6 +726,11 @@ function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBun
     }
   }
 
+  // v7.2: Clear predictive_horizon for CLEAR state (no risk = no horizon)
+  if (intel.state === 'CLEAR') {
+    intel.predictive_horizon = null;
+  }
+
   intel.validator_notes = notes;
   intel.requires_review = requiresReview;
   return intel;
@@ -750,7 +782,7 @@ export async function classifyCompanyState(
   if (!process.env.ANTHROPIC_API_KEY) return def;
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-5',
+      model: 'claude-sonnet-4-6',
       max_tokens: 1000,
       messages: [{
         role: 'user',
