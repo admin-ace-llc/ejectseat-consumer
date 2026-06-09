@@ -3,8 +3,97 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>EjectSeat — Layoff Risk Predictor</title>
-<meta name="description" content="Predict layoff risk for US-listed public companies. Reads SEC filings, earnings call transcripts, and Tier A/B media." />
+
+<!-- ═══ SEO: Title + Description ══════════════════════════════════════════ -->
+<title>EjectSeat — Is Your Company Planning Layoffs? Check Now</title>
+<meta name="description" content="EjectSeat predicts layoff risk for any US-listed public company before it hits the news. We read SEC filings, earnings call transcripts, and Tier A/B media to surface a forward-looking risk score." />
+<meta name="keywords" content="layoff risk, layoff predictor, company layoffs 2025, is my company laying off, SEC filing layoffs, tech layoffs, upcoming layoffs" />
+<link rel="canonical" href="https://ejectseat.io/" />
+
+<!-- ═══ SEO: Open Graph ════════════════════════════════════════════════════ -->
+<meta property="og:type" content="website" />
+<meta property="og:url" content="https://ejectseat.io/" />
+<meta property="og:title" content="EjectSeat — Is Your Company Planning Layoffs?" />
+<meta property="og:description" content="Predict layoff risk for any US-listed public company. EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media to produce a forward-looking risk score." />
+<meta property="og:image" content="https://ejectseat.io/og-image.png" />
+<meta property="og:site_name" content="EjectSeat" />
+
+<!-- ═══ SEO: Twitter Card ══════════════════════════════════════════════════ -->
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:site" content="@ejectseat" />
+<meta name="twitter:title" content="EjectSeat — Is Your Company Planning Layoffs?" />
+<meta name="twitter:description" content="Predict layoff risk for any US-listed public company. Forward-looking risk scores from SEC filings, earnings calls, and Tier A/B media." />
+<meta name="twitter:image" content="https://ejectseat.io/og-image.png" />
+
+<!-- ═══ SEO: JSON-LD Structured Data ═════════════════════════════════════ -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://ejectseat.io/#website",
+      "url": "https://ejectseat.io/",
+      "name": "EjectSeat",
+      "description": "Layoff risk predictor for US-listed public companies",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://ejectseat.io/?q={search_term_string}"
+        },
+        "query-input": "required name=search_term_string"
+      }
+    },
+    {
+      "@type": "FAQPage",
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How does EjectSeat predict layoffs?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "EjectSeat reads SEC filings (8-K, 10-K, 10-Q), earnings call transcripts, and Tier A/B media (Reuters, Bloomberg, FT, WSJ) for any US-listed public company. A single Claude Sonnet AI call analyses the full evidence bundle and returns a risk score, state classification (CLEAR / WATCH / LIKELY / ACTIVE), and forward-looking signals including hiring freezes, executive departures, and restructuring charges."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Is EjectSeat accurate for predicting layoffs before they are announced?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "EjectSeat surfaces predictive signals — hiring freezes, executive departures, cost-cutting language, and restructuring charges — that typically precede formal layoff announcements by 30–90 days. Scores are based only on public filings and verified Tier A/B media; no social media or unverified sources are used. Results are predictive signals, not confirmed outcomes."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "Which companies does EjectSeat cover?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "EjectSeat covers US-listed public companies and Foreign Private Issuers (FPIs) that file with the SEC, including companies listed on NYSE, NASDAQ, and those filing 20-F and 6-K forms. Private companies and market indexes are not covered."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What does the ACTIVE layoff state mean?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "ACTIVE means a confirmed layoff event was announced in an official filing (8-K Item 2.05) or verified Tier A media within the last 90 days, OR a named multi-year restructuring programme is currently mid-cycle, OR the company has filed for bankruptcy. ACTIVE scores range from 60–90 out of 100."
+          }
+        },
+        {
+          "@type": "Question",
+          "name": "What are the early warning signs that a company might lay off workers?",
+          "acceptedAnswer": {
+            "@type": "Answer",
+            "text": "The strongest leading indicators are: (1) an explicit hiring freeze announced on an earnings call, (2) clustered executive departures (CFO, CTO, CPO) within a 3-month window, (3) office lease terminations or facility consolidations, (4) restructuring charges appearing in quarterly XBRL filings, (5) CEO language about 'path to profitability' or 'right-sizing the cost structure'. EjectSeat detects all five automatically."
+          }
+        }
+      ]
+    }
+  ]
+}
+</script>
+
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232563eb'/%3E%3Cpath d='M8 20 L16 10 L24 20' stroke='white' stroke-width='2.8' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
 <link rel="preconnect" href="https://rsms.me/">
 <link rel="stylesheet" href="https://rsms.me/inter/inter.css">
@@ -95,6 +184,53 @@ nav.site { display: flex; gap: 22px; align-items: center; }
 nav.site a { color: var(--text-dim); font-size: 14px; font-weight: 500; transition: color 120ms var(--ease-gentle); }
 nav.site a:hover { color: var(--text); }
 
+/* ═══ VISITOR PROMPT ══════════════════════════════════════════════════════ */
+/* Appears to first-time visitors above the hero. Dismissed with one click. */
+.visitor-prompt {
+  margin-bottom: 24px;
+  background: linear-gradient(135deg, #eff4ff 0%, #f0fdf4 100%);
+  border: 1px solid #bfdbfe;
+  border-radius: var(--radius-md);
+  padding: 18px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  animation: vpSlideIn 420ms var(--ease-out) forwards;
+}
+@keyframes vpSlideIn {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.visitor-prompt.dismissed { display: none; }
+.vp-left { display: flex; align-items: center; gap: 14px; flex: 1; min-width: 0; }
+.vp-icon {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: linear-gradient(135deg, var(--accent) 0%, #60a5fa 100%);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; box-shadow: var(--shadow-sm);
+}
+.vp-icon svg { width: 20px; height: 20px; }
+.vp-text { flex: 1; min-width: 0; }
+.vp-headline { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 2px; }
+.vp-sub { font-size: 13px; color: var(--text-dim); }
+.vp-right { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+.vp-cta {
+  background: var(--accent); color: white; border: 0;
+  padding: 9px 18px; border-radius: 8px; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+  transition: background 120ms var(--ease-gentle), transform 120ms var(--ease-gentle);
+  box-shadow: var(--shadow-sm);
+}
+.vp-cta:hover { background: var(--accent-dark); transform: translateY(-1px); }
+.vp-dismiss {
+  background: transparent; border: 0; cursor: pointer;
+  color: var(--text-faint); padding: 6px; border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 120ms var(--ease-gentle), color 120ms var(--ease-gentle);
+}
+.vp-dismiss:hover { background: rgba(0,0,0,0.06); color: var(--text); }
+
 /* ═══ HERO ════════════════════════════════════════════════════════════════ */
 .hero { position: relative; margin-bottom: 32px; }
 .hero::before {
@@ -184,6 +320,14 @@ nav.site a:hover { color: var(--text); }
 .confidence-pill .tooltip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%) translateY(4px); background: var(--text); border-radius: var(--radius-sm); padding: 8px 10px; font-size: 12px; color: #fff; font-weight: 400; width: max-content; max-width: 260px; opacity: 0; pointer-events: none; transition: opacity 150ms var(--ease-gentle), transform 150ms var(--ease-gentle); z-index: 20; text-align: left; box-shadow: var(--shadow-lg); letter-spacing: 0; text-transform: none; }
 .confidence-pill:hover .tooltip, .confidence-pill:focus-within .tooltip { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* Predictive horizon pill */
+.horizon-pill {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11px; font-weight: 600;
+  background: #fff7ed; color: #92400e; border: 1px solid #fde68a;
+}
+.horizon-pill::before { content: '⏱'; font-size: 10px; }
+
 .quarter-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; color: var(--text-dim); background: var(--panel-alt); border: 1px solid var(--border); font-weight: 500; }
 
 .summary { color: var(--text); font-size: 15.5px; line-height: 1.6; margin: 16px 0 0; opacity: 0; transform: translateY(4px); animation: fadeSlideIn 400ms var(--ease-gentle) 650ms forwards; }
@@ -231,14 +375,156 @@ nav.site a:hover { color: var(--text); }
 .signal-body { flex: 1; min-width: 0; }
 .signal-body .msg { font-size: 14px; color: var(--text); line-height: 1.5; }
 .signal-body .src { font-size: 12px; color: var(--text-faint); margin-top: 3px; }
+/* Predictive tag on forward-looking signals */
+.signal-predictive-tag {
+  display: inline-block; font-size: 10px; font-weight: 700; letter-spacing: 0.06em;
+  text-transform: uppercase; color: #92400e; background: #fff7ed;
+  border: 1px solid #fde68a; padding: 1px 6px; border-radius: 4px;
+  margin-top: 4px;
+}
 
 .disclaimer { border-top: 1px solid var(--border); padding: 18px 28px 24px; color: var(--text-faint); font-size: 12.5px; line-height: 1.55; background: var(--panel-alt); }
 .disclaimer .line { margin: 0 0 4px; }
 .disclaimer .line:last-child { margin-bottom: 0; }
 
-/* ═══ HIGH RISK WATCH ════════════════════════════════════════════════════ */
-/* Self-populates from user searches. Hides when no HIGH-band scores exist. */
+/* ═══ ACTIVE LAYOFFS TICKER ═══════════════════════════════════════════════ */
+/* Vertical list — pre-populated from /api/active-layoffs regardless of      */
+/* whether those companies have been individually searched by users.          */
+.alt-section {
+  margin-top: 32px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  display: none; /* shown by JS when entries exist */
+}
 
+.alt-header {
+  padding: 22px 28px 18px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, #fef2f2 0%, #fff7ed 100%);
+}
+
+.alt-eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--red-text);
+  margin-bottom: 6px;
+}
+
+.alt-live-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--red); flex-shrink: 0;
+  animation: altPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes altPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.4); }
+  50%       { box-shadow: 0 0 0 6px rgba(220, 38, 38, 0); }
+}
+
+.alt-title-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+}
+.alt-title { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; margin: 0; color: var(--text); }
+.alt-count-badge {
+  display: inline-flex; align-items: center;
+  padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700;
+  background: var(--red-soft); color: var(--red-text); border: 1px solid #fecaca;
+  letter-spacing: 0.04em; flex-shrink: 0;
+}
+.alt-sub { color: var(--text-dim); font-size: 13.5px; margin: 5px 0 0; line-height: 1.5; }
+
+.alt-list { padding: 0; }
+
+.alt-card {
+  display: flex; align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  opacity: 0; transform: translateY(6px);
+  transition: background 120ms var(--ease-gentle);
+}
+.alt-card:last-child { border-bottom: 0; }
+.alt-card.in {
+  opacity: 1; transform: translateY(0);
+  transition:
+    opacity 320ms var(--ease-out),
+    transform 320ms var(--ease-out),
+    background 120ms var(--ease-gentle);
+}
+.alt-card:hover { background: var(--panel-alt); }
+
+.alt-stripe { width: 4px; flex-shrink: 0; }
+.alt-stripe.ACTIVE { background: var(--red); }
+.alt-stripe.LIKELY { background: var(--amber); }
+.alt-stripe.WATCH  { background: var(--accent); }
+
+.alt-body { flex: 1; padding: 15px 20px 14px; min-width: 0; }
+
+.alt-top-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 5px;
+}
+.alt-left-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+
+.alt-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; border: 1px solid transparent; flex-shrink: 0;
+}
+.alt-badge.ACTIVE { background: var(--red-soft);   color: var(--red-text);   border-color: #fecaca; }
+.alt-badge.LIKELY { background: var(--amber-soft); color: var(--amber-text); border-color: #fde68a; }
+.alt-badge.WATCH  { background: var(--accent-soft);color: var(--accent-text);border-color: #bfdbfe; }
+
+.alt-score-tag { font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.alt-score-tag span { color: var(--text-faint); font-weight: 400; font-size: 11px; }
+
+/* Trajectory indicator */
+.alt-trajectory {
+  font-size: 11px; font-weight: 600; padding: 2px 7px;
+  border-radius: 999px; flex-shrink: 0;
+}
+.alt-trajectory.escalating { background: var(--red-soft); color: var(--red-text); }
+.alt-trajectory.completing  { background: var(--green-soft); color: var(--green-text); }
+.alt-trajectory.stable      { background: var(--panel-alt); color: var(--text-faint); border: 1px solid var(--border); }
+
+.alt-name {
+  font-size: 15.5px; font-weight: 600; color: var(--text);
+  letter-spacing: -0.01em; white-space: nowrap; overflow: hidden;
+  text-overflow: ellipsis; margin-bottom: 5px;
+}
+.alt-name .tk { color: var(--text-faint); font-weight: 400; font-size: 13px; margin-left: 6px; }
+
+.alt-signal {
+  font-size: 13px; color: var(--text-dim); line-height: 1.55; margin-bottom: 9px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.alt-signal em { font-style: normal; color: var(--text); font-weight: 500; }
+
+.alt-foot-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.alt-age { font-size: 11.5px; color: var(--text-faint); font-weight: 500; }
+.alt-waves { font-size: 11.5px; color: var(--red-text); font-weight: 600; }
+.alt-cta-link {
+  font-size: 12px; font-weight: 600; color: var(--accent);
+  display: inline-flex; align-items: center; gap: 3px; white-space: nowrap;
+  transition: gap 120ms var(--ease-gentle), color 120ms var(--ease-gentle);
+}
+.alt-card:hover .alt-cta-link { gap: 6px; color: var(--accent-dark); }
+
+/* skeleton */
+.alt-skeleton { padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; }
+.alt-skel-row { height: 72px; background: linear-gradient(90deg, var(--panel-alt) 25%, var(--border) 50%, var(--panel-alt) 75%); background-size: 200% 100%; border-radius: var(--radius); animation: altShimmer 1.4s infinite; }
+@keyframes altShimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+/* ═══ HIGH RISK WATCH (existing, user-search-fed) ════════════════════════ */
 .hrw-section {
   margin-top: 28px;
   background: var(--panel);
@@ -246,7 +532,7 @@ nav.site a:hover { color: var(--text); }
   border-radius: var(--radius-md);
   overflow: hidden;
   box-shadow: var(--shadow);
-  display: none; /* shown by JS when entries exist */
+  display: none;
 }
 
 .hrw-header {
@@ -318,7 +604,6 @@ nav.site a:hover { color: var(--text); }
   line-height: 1.5;
 }
 
-/* List */
 .hrw-list { padding: 0; }
 
 .hrw-card {
@@ -341,22 +626,13 @@ nav.site a:hover { color: var(--text); }
 }
 .hrw-card:hover { background: var(--panel-alt); }
 
-/* Left accent stripe by state */
-.hrw-stripe {
-  width: 4px;
-  flex-shrink: 0;
-  border-radius: 0;
-}
+.hrw-stripe { width: 4px; flex-shrink: 0; border-radius: 0; }
 .hrw-stripe.ACTIVE { background: var(--red); }
 .hrw-stripe.LIKELY { background: var(--amber); }
 .hrw-stripe.WATCH  { background: var(--accent); }
 .hrw-stripe.CLEAR  { background: var(--green); }
 
-.hrw-body {
-  flex: 1;
-  padding: 15px 20px 14px;
-  min-width: 0;
-}
+.hrw-body { flex: 1; padding: 15px 20px 14px; min-width: 0; }
 
 .hrw-top-row {
   display: flex;
@@ -417,7 +693,6 @@ nav.site a:hover { color: var(--text); }
   margin-left: 6px;
 }
 
-/* Reasoning snippet — the key differentiator */
 .hrw-signal {
   font-size: 13px;
   color: var(--text-dim);
@@ -460,7 +735,6 @@ nav.site a:hover { color: var(--text); }
 }
 .hrw-card:hover .hrw-cta-link { gap: 6px; color: var(--accent-dark); }
 
-/* Loading + empty states */
 .hrw-skeleton { padding: 20px 28px; display: flex; flex-direction: column; gap: 14px; }
 .hrw-skel-row { height: 72px; background: linear-gradient(90deg, var(--panel-alt) 25%, var(--border) 50%, var(--panel-alt) 75%); background-size: 200% 100%; border-radius: var(--radius); animation: hrwShimmer 1.4s infinite; }
 @keyframes hrwShimmer {
@@ -545,7 +819,15 @@ footer.site a { color: var(--text-dim); }
   .gauge-score { font-size: 36px; }
   .detail-grid { grid-template-columns: 1fr; }
 
-  /* HRW responsive */
+  .visitor-prompt { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .vp-right { width: 100%; justify-content: space-between; }
+
+  .alt-header { padding: 18px 20px 14px; }
+  .alt-title { font-size: 18px; }
+  .alt-body { padding: 13px 16px 12px; }
+  .alt-name { font-size: 14.5px; }
+  .alt-signal { -webkit-line-clamp: 3; }
+
   .hrw-header { padding: 18px 20px 14px; }
   .hrw-title { font-size: 18px; }
   .hrw-body { padding: 13px 16px 12px; }
@@ -568,6 +850,8 @@ footer.site a { color: var(--text-dim); }
 
 @media (max-width: 400px) {
   .hero h1 { font-size: 24px; }
+  .alt-header { padding: 14px 16px 12px; }
+  .alt-body { padding: 12px 14px; }
   .hrw-header { padding: 14px 16px 12px; }
   .hrw-body { padding: 12px 14px; }
   .lz-filters { padding: 14px 16px; }
@@ -592,26 +876,52 @@ footer.site a { color: var(--text-dim); }
     </nav>
   </header>
 
+  <!-- ═══ VISITOR PROMPT (first-visit only, dismissible) ═══════════════ -->
+  <div class="visitor-prompt" id="visitor-prompt" role="banner" aria-label="Check your company">
+    <div class="vp-left">
+      <div class="vp-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="8" x2="12" y2="12"/>
+          <line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+      </div>
+      <div class="vp-text">
+        <div class="vp-headline">Is your company planning layoffs?</div>
+        <div class="vp-sub">Search below — we read the SEC filings and earnings calls so you don't have to.</div>
+      </div>
+    </div>
+    <div class="vp-right">
+      <button class="vp-cta" id="vp-cta-btn" aria-label="Check my company">Check my company →</button>
+      <button class="vp-dismiss" id="vp-dismiss-btn" aria-label="Dismiss">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <line x1="1" y1="1" x2="13" y2="13"/><line x1="13" y1="1" x2="1" y2="13"/>
+        </svg>
+      </button>
+    </div>
+  </div>
+
   <!-- ═══ HERO ═════════════════════════════════════════════════════════ -->
   <section class="hero">
     <h1>Is your company heading for layoffs?</h1>
-    <p class="lede">Search any US-listed public company. EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media to produce a forward-looking risk score.</p>
+    <p class="lede">Search any US-listed public company. EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media to produce a forward-looking risk score — before the announcement hits.</p>
     <div class="trust-bar">
       <span class="trust-chip"><span class="dot"></span>SEC EDGAR</span>
       <span class="trust-chip"><span class="dot"></span>Earnings transcripts</span>
       <span class="trust-chip"><span class="dot"></span>Reuters · Bloomberg · FT · WSJ</span>
+      <span class="trust-chip"><span class="dot"></span>Predictive · not social media</span>
     </div>
     <div class="search-wrap">
       <div class="search">
-        <input id="q" type="text" placeholder="Company name or ticker — Snap, AAPL, Marsh &amp; McLennan…" autocomplete="off" spellcheck="false" />
+        <input id="q" type="text" placeholder="Company name or ticker — Snap, AAPL, Marsh &amp; McLennan…" autocomplete="off" spellcheck="false" aria-label="Search company" />
         <button id="go">Score</button>
       </div>
-      <div class="suggestions" id="suggestions"></div>
+      <div class="suggestions" id="suggestions" role="listbox"></div>
     </div>
   </section>
 
   <!-- ═══ LOADING (appears after search) ═══════════════════════════════ -->
-  <div class="loading-panel" id="loading">
+  <div class="loading-panel" id="loading" aria-live="polite" aria-busy="true">
     <div class="load-phase pending" data-phase="1"><span class="load-icon"></span><span>Validating company</span></div>
     <div class="load-phase pending" data-phase="2"><span class="load-icon"></span><span>Reading SEC filings and earnings transcripts</span></div>
     <div class="load-phase pending" data-phase="3"><span class="load-icon"></span><span>Running comprehensive analysis</span></div>
@@ -619,11 +929,28 @@ footer.site a { color: var(--text-dim); }
   </div>
 
   <!-- ═══ RESULT PANEL (hidden until search) ═══════════════════════════ -->
-  <div class="result-panel" id="result"></div>
+  <div class="result-panel" id="result" aria-live="polite"></div>
 
-  <!-- ═══ HIGH RISK WATCH ══════════════════════════════════════════════ -->
-  <!-- Self-populates from user searches. Hidden on fresh deployments.   -->
-  <!-- Refreshes every 5 min client-side; server cache is 30 min.        -->
+  <!-- ═══ ACTIVE LAYOFFS TICKER ═══════════════════════════════════════ -->
+  <!-- Pre-populated from /api/active-layoffs — shows ACTIVE + LIKELY    -->
+  <!-- companies from DB, regardless of whether they've been searched.   -->
+  <!-- Refreshes every 10 min client-side.                               -->
+  <section class="alt-section" id="alt-section" aria-label="Active layoffs and at-risk companies">
+    <div class="alt-header">
+      <div class="alt-eyebrow">
+        <span class="alt-live-dot" aria-hidden="true"></span>
+        Live · updated from SEC filings
+      </div>
+      <div class="alt-title-row">
+        <h2 class="alt-title">Active &amp; Upcoming Layoffs</h2>
+        <span class="alt-count-badge" id="alt-count"></span>
+      </div>
+      <p class="alt-sub">Companies with confirmed active layoffs or strong predictive signals. Drawn from SEC filings, earnings transcripts, and Tier A/B media. Click any to run a fresh score.</p>
+    </div>
+    <div class="alt-list" id="alt-list" role="list"></div>
+  </section>
+
+  <!-- ═══ HIGH RISK WATCH (user-search-fed, existing section) ══════════ -->
   <section class="hrw-section" id="hrw-section" aria-label="Elevated Risk Watch">
     <div class="hrw-header">
       <div class="hrw-eyebrow">
@@ -651,7 +978,7 @@ footer.site a { color: var(--text-dim); }
       <div class="filter-row">
         <span class="filter-label">Location</span>
         <div class="country-select">
-          <select id="country-select">
+          <select id="country-select" aria-label="Select country">
             <option value="us">United States</option>
             <option value="gb">United Kingdom</option>
             <option value="ca">Canada</option>
@@ -681,11 +1008,11 @@ footer.site a { color: var(--text-dim); }
       </div>
       <div class="filter-row">
         <span class="filter-label">Function</span>
-        <div class="chip-group" id="func-chips"></div>
+        <div class="chip-group" id="func-chips" role="group" aria-label="Function filter"></div>
       </div>
       <div class="filter-row">
         <span class="filter-label">Level</span>
-        <div class="chip-group" id="tier-chips"></div>
+        <div class="chip-group" id="tier-chips" role="group" aria-label="Level filter"></div>
       </div>
     </div>
 
@@ -711,7 +1038,8 @@ footer.site a { color: var(--text-dim); }
 'use strict';
 
 /* ═══ STATE ════════════════════════════════════════════════════════════ */
-const STORE_KEY = 'es_prefs_v1';
+const STORE_KEY    = 'es_prefs_v1';
+const PROMPT_KEY   = 'es_prompt_dismissed_v1';
 const state = { currentCompany: null, currentTicker: null, lastRisk: null, prefs: loadPrefs(), suggestIndex: -1 };
 
 function loadPrefs() {
@@ -738,7 +1066,6 @@ function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTi
 function easeOutBack(t) { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2); }
 function beacon(eventType, payload) { try { fetch('/api/beacon', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ eventType, payload: payload || {} }) }); } catch {} }
 
-/* Age formatting for HRW cards */
 function fmtAge(iso) {
   if (!iso) return '';
   try {
@@ -750,6 +1077,38 @@ function fmtAge(iso) {
     return `${wks} ${wks === 1 ? 'week' : 'weeks'} ago`;
   } catch { return ''; }
 }
+
+/* ═══ VISITOR PROMPT ═══════════════════════════════════════════════════ */
+(function initVisitorPrompt() {
+  const prompt = $('visitor-prompt');
+  if (!prompt) return;
+
+  // Check if already dismissed
+  try {
+    if (localStorage.getItem(PROMPT_KEY)) {
+      prompt.classList.add('dismissed');
+      return;
+    }
+  } catch {}
+
+  $('vp-dismiss-btn').addEventListener('click', () => {
+    prompt.classList.add('dismissed');
+    try { localStorage.setItem(PROMPT_KEY, '1'); } catch {}
+    beacon('visitor_prompt_dismissed', {});
+  });
+
+  $('vp-cta-btn').addEventListener('click', () => {
+    prompt.classList.add('dismissed');
+    try { localStorage.setItem(PROMPT_KEY, '1'); } catch {}
+    beacon('visitor_prompt_cta_clicked', {});
+    // Focus the search input and scroll to it
+    const input = $('q');
+    if (input) {
+      input.focus();
+      input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  });
+})();
 
 /* ═══ SEARCH ═══════════════════════════════════════════════════════════ */
 const suggestEl = $('suggestions'), queryEl = $('q');
@@ -777,7 +1136,7 @@ function renderSuggestions(list) {
   if (!list.length) { closeSuggestions(); return; }
   state.suggestIndex = -1;
   suggestEl.innerHTML = list.map(s => `
-    <div class="suggestion" data-name="${h(s.name)}" data-ticker="${h(s.ticker || '')}">
+    <div class="suggestion" role="option" data-name="${h(s.name)}" data-ticker="${h(s.ticker || '')}">
       <div class="name">${h(s.name)}${s.ticker ? `<span class="ticker">${h(s.ticker)}</span>` : ''}</div>
       ${s.hint ? `<div class="hint">${h(s.hint)}</div>` : ''}
     </div>`).join('');
@@ -854,6 +1213,8 @@ function render(data) {
   const functionRisk = r.function_risk || intel?.function_risk || null;
   const bankruptcy = r.bankruptcy || intel?.bankruptcy || null;
   const qStatus = r.quarterlyStatus;
+  const predictiveHorizon = intel?.predictive_horizon || null;
+  const trajectory = intel?.trajectory || null;
 
   const stateDescriptions = {
     CLEAR:  'No material layoff signals',
@@ -869,6 +1230,10 @@ function render(data) {
     : 'Two or more independent sources corroborate the findings.';
 
   const showInlineCTA = (band === 'HIGH' || band === 'MEDIUM') && signals.length > 0;
+
+  const horizonHtml = predictiveHorizon && state_ !== 'CLEAR'
+    ? `<span class="horizon-pill" title="Estimated window for risk materialisation">Risk horizon: ${h(predictiveHorizon)}</span>`
+    : '';
 
   const html = `
     <div class="result-head">
@@ -892,6 +1257,7 @@ function render(data) {
               ${confidenceLabel(confidence)}
               <span class="tooltip">${h(confidenceTooltip)}</span>
             </span>
+            ${horizonHtml}
             ${qStatus?.currentQuarterLabel ? `<span class="quarter-chip">Awaiting ${h(qStatus.currentQuarterLabel)} ${h(qStatus.lastFiledForm || '10-Q')}</span>` : ''}
           </div>
           <p class="summary">${h(summary)}</p>
@@ -911,6 +1277,7 @@ function render(data) {
             <div class="signal-body">
               <div class="msg">${h(s.alertMessage || s.type || '')}</div>
               <div class="src">${h(s.source || '')}</div>
+              ${s.temporalTag === 'Predictive' ? '<div class="signal-predictive-tag">Predictive signal</div>' : ''}
             </div>
           </div>`).join('')}
       </div>` : ''}
@@ -942,7 +1309,6 @@ function render(data) {
 
   $('result').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
-  // If this result is HIGH band, refresh the HRW list after DB write settles
   if (band === 'HIGH') {
     setTimeout(fetchHighRiskWatch, 2000);
   }
@@ -1044,6 +1410,105 @@ function animateGauge(targetScore, stateClass) {
   requestAnimationFrame(tick);
 }
 
+/* ═══ ACTIVE LAYOFFS TICKER ════════════════════════════════════════════ */
+
+let altPollTimer = null;
+
+async function fetchActiveLayoffs() {
+  try {
+    const res = await fetch('/api/active-layoffs');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderActiveLayoffs(data.companies || []);
+  } catch {
+    // Network error — leave section as-is
+  }
+}
+
+function renderActiveLayoffs(companies) {
+  const section = $('alt-section');
+  const list    = $('alt-list');
+  const countEl = $('alt-count');
+  if (!section || !list) return;
+
+  if (!companies || companies.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+
+  if (countEl) {
+    const activeCount = companies.filter(c => c.state === 'ACTIVE').length;
+    const likelyCount = companies.filter(c => c.state === 'LIKELY').length;
+    const parts = [];
+    if (activeCount) parts.push(`${activeCount} ACTIVE`);
+    if (likelyCount) parts.push(`${likelyCount} LIKELY`);
+    countEl.textContent = parts.join(' · ');
+  }
+
+  list.innerHTML = companies.slice(0, 25).map(c => {
+    const stateClass = c.state === 'ACTIVE' ? 'ACTIVE' : 'LIKELY';
+    const age = fmtAge(c.scoredAt);
+
+    let signalText = '';
+    if (c.keySignal) {
+      signalText = c.keySignal;
+    } else if (c.programmeName) {
+      signalText = `Named restructuring programme "${c.programmeName}" detected in SEC filings.`;
+    } else if (stateClass === 'ACTIVE') {
+      signalText = 'Confirmed layoff event or restructuring programme in progress.';
+    } else {
+      signalText = 'Multiple predictive signals detected — hiring freeze, financial pressure, or cost-cutting language.';
+    }
+
+    const scoreColor = stateClass === 'ACTIVE' ? 'var(--red-text)' : 'var(--amber-text)';
+
+    const trajHtml = c.trajectoryDir && c.trajectoryDir !== 'unknown'
+      ? `<span class="alt-trajectory ${h(c.trajectoryDir)}">${c.trajectoryDir === 'escalating' ? '↑ escalating' : c.trajectoryDir === 'completing' ? '↓ completing' : '→ stable'}</span>`
+      : '';
+
+    const wavesHtml = c.wavesConfirmed > 0
+      ? `<span class="alt-waves">Wave ${c.wavesConfirmed}</span>`
+      : '';
+
+    return `<div class="alt-card" role="listitem" onclick="altActivate(${JSON.stringify(c.name)}, ${JSON.stringify(c.ticker || '')})" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')altActivate(${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})">
+  <div class="alt-stripe ${stateClass}"></div>
+  <div class="alt-body">
+    <div class="alt-top-row">
+      <div class="alt-left-meta">
+        <span class="alt-badge ${stateClass}">${stateClass}</span>
+        <span class="alt-score-tag" style="color:${scoreColor}">${c.score || 0}<span>/100</span></span>
+        ${trajHtml}
+      </div>
+    </div>
+    <div class="alt-name">${h(c.name)}${c.ticker ? `<span class="tk">${h(c.ticker)}</span>` : ''}</div>
+    <div class="alt-signal">${h(signalText)}</div>
+    <div class="alt-foot-row">
+      <span class="alt-age">${h(age)}</span>
+      ${wavesHtml}
+      <span class="alt-cta-link">Score now →</span>
+    </div>
+  </div>
+</div>`;
+  }).join('');
+
+  requestAnimationFrame(() => {
+    list.querySelectorAll('.alt-card').forEach((card, i) => {
+      setTimeout(() => card.classList.add('in'), i * 55);
+    });
+  });
+}
+
+function altActivate(companyName, ticker) {
+  if (!companyName) return;
+  queryEl.value = companyName;
+  closeSuggestions();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  beacon('alt_company_clicked', { companyName, ticker });
+  setTimeout(() => runScore(companyName, ticker || undefined), 300);
+}
+
 /* ═══ HIGH RISK WATCH ══════════════════════════════════════════════════ */
 
 let hrwPollTimer = null;
@@ -1051,11 +1516,11 @@ let hrwPollTimer = null;
 async function fetchHighRiskWatch() {
   try {
     const res = await fetch('/api/high-risk');
-    if (!res.ok) return; // silently fail — section stays in current state
+    if (!res.ok) return;
     const data = await res.json();
     renderHighRiskWatch(data.companies || []);
   } catch {
-    // Network error — leave section as-is (don't hide if we had data)
+    // Network error — leave section as-is
   }
 }
 
@@ -1070,20 +1535,16 @@ function renderHighRiskWatch(companies) {
     return;
   }
 
-  // Show section
   section.style.display = 'block';
 
-  // Update count badge
   if (countEl) {
     countEl.textContent = `${companies.length} compan${companies.length === 1 ? 'y' : 'ies'}`;
   }
 
-  // Render cards
   list.innerHTML = companies.slice(0, 20).map(c => {
     const stateClass  = ['ACTIVE','LIKELY','WATCH','CLEAR'].includes(c.state) ? c.state : 'ACTIVE';
     const age         = fmtAge(c.scoredAt);
 
-    // Reasoning snippet: prefer key_signal, fall back to programme name, then generic
     let signalText = '';
     if (c.keySignal) {
       signalText = c.keySignal;
@@ -1093,7 +1554,6 @@ function renderHighRiskWatch(companies) {
       signalText = 'Elevated risk signals detected in SEC filings and media coverage.';
     }
 
-    // Highlight the score bar colour via --hrw-score-color for the score tag
     const scoreColor = stateClass === 'ACTIVE' ? 'var(--red-text)'
                      : stateClass === 'LIKELY' ? 'var(--amber-text)'
                      : stateClass === 'WATCH'  ? 'var(--accent-text)'
@@ -1118,7 +1578,6 @@ function renderHighRiskWatch(companies) {
 </div>`;
   }).join('');
 
-  // Stagger animation
   requestAnimationFrame(() => {
     list.querySelectorAll('.hrw-card').forEach((card, i) => {
       setTimeout(() => card.classList.add('in'), i * 55);
@@ -1132,7 +1591,6 @@ function hrwActivate(companyName, ticker) {
   closeSuggestions();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   beacon('hrw_company_clicked', { companyName, ticker });
-  // Short delay so scroll completes before loading panel appears
   setTimeout(() => runScore(companyName, ticker || undefined), 300);
 }
 
@@ -1271,6 +1729,10 @@ function countryLabel(code) {
   beacon('page_view', { path: window.location.pathname });
   initLandingZone();
   queryEl.focus();
+
+  // Active layoffs ticker — fetch immediately + 10-min polling
+  fetchActiveLayoffs();
+  altPollTimer = setInterval(fetchActiveLayoffs, 10 * 60 * 1000);
 
   // High Risk Watch — initial fetch + 5-min polling
   fetchHighRiskWatch();
