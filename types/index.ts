@@ -3,6 +3,7 @@
 // v7: comprehensive intelligence object replaces multi-signal accumulation.
 //     Old Signal[] preserved as `legacySignals` for UI backward compatibility
 //     and for the audit strip showing what was in the evidence bundle.
+// v7.2: Added new forward-looking signal types + predictive_horizon field.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // BANDS / TIERS
@@ -106,11 +107,28 @@ export interface IntelligenceConfirmedEvent {
   filing_type:     string | null;  // "8-K Item 2.05" etc.
 }
 
+// v7.2: Extended with new predictive signal types
+export type ForwardSignalType =
+  | 'activist_pressure'
+  | 'sustained_losses'
+  | 'ceo_language'
+  | 'cost_pressure'
+  | 'headcount_drop'
+  | 'impairment'
+  | 'nt_filing'
+  | 'strategic_distress'
+  | 'profitability_pivot'
+  | 'restructuring_charge'
+  // v7.2 additions — forward-looking predictive indicators
+  | 'hiring_freeze'          // explicit pause/freeze on new hires
+  | 'executive_exodus'       // CFO/CTO/multiple VP departures clustered in time
+  | 'office_closure'         // lease terminations, facility consolidations
+  | 'product_discontinuation'// product lines sunset'd = revenue + headcount pressure
+  | 'debt_covenant_risk'     // approaching covenant breach, waiver requested
+  | 'other';
+
 export interface IntelligenceForwardSignal {
-  signal_type:  'activist_pressure' | 'sustained_losses' | 'ceo_language'
-             | 'cost_pressure' | 'headcount_drop' | 'impairment'
-             | 'nt_filing' | 'strategic_distress' | 'profitability_pivot'
-             | 'restructuring_charge' | 'other';
+  signal_type:  ForwardSignalType;
   description:  string;
   source_ref:   string;            // accession / URL / tier name
   source_quote: string;
@@ -170,6 +188,9 @@ export interface BankruptcyFiling {
 
 export type TrajectoryDirection = 'escalating' | 'stable' | 'completing' | 'unknown';
 
+// v7.2: When Sonnet believes an event is most likely to materialise
+export type PredictiveHorizon = '30d' | '60d' | '90d' | '180d+' | null;
+
 export interface WavesIntelligence {
   waves_confirmed:       number;              // 0, 1, 2, 3...
   further_waves_signal:  string | null;       // CEO language / filings pointing to more
@@ -190,8 +211,9 @@ export interface ComprehensiveIntelligence {
   bankruptcy:         BankruptcyFiling;
   waves:              WavesIntelligence;
   trajectory:         TrajectoryDirection;
+  predictive_horizon: PredictiveHorizon;       // v7.2: when risk likely to materialise
   large_employer_flag: boolean;
-  summary:            string;                   // 3-4 sentence brief, ≤ 50 words
+  summary:            string;                   // 3-4 sentence brief, ≤ 60 words
   reasoning_chain:    string;                   // Sonnet's chain of thought
   requires_review:    boolean;                  // set by validator on disagreement
   validator_notes:    string[];                 // what post-validation caught
