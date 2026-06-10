@@ -51,7 +51,7 @@ import type {
   IntelligenceConfirmedEvent, IntelligenceForwardSignal,
   ProgrammeIntelligence, HeadcountEstimate, FunctionRiskMap,
   BankruptcyFiling, WavesIntelligence, ConfidenceTier,
-  TrajectoryDirection, ConfirmedEvent,
+  TrajectoryDirection, ConfirmedEvent, PredictiveHorizon, ForwardSignalType,
 } from '@/types';
 import { fmtUSD, fmtCount } from '@/lib/format';
 import { compactTranscriptForPrompt } from '@/lib/signals/transcripts';
@@ -316,7 +316,7 @@ OUTPUT — return ONLY this JSON object, nothing else.
 
   "forward_signals": [
     {
-      "signal_type": "activist_pressure" | "sustained_losses" | "ceo_language" | "cost_pressure" | "headcount_drop" | "impairment" | "nt_filing" | "strategic_distress" | "profitability_pivot" | "restructuring_charge" | "other",
+      "signal_type": "activist_pressure" | "sustained_losses" | "ceo_language" | "cost_pressure" | "headcount_drop" | "impairment" | "nt_filing" | "strategic_distress" | "profitability_pivot" | "restructuring_charge" | "hiring_freeze" | "executive_exodus" | "office_closure" | "product_discontinuation" | "debt_covenant_risk" | "other",
       "description": "what the signal is",
       "source_ref": "accession/URL/tier",
       "source_quote": "direct quote 10-200 chars",
@@ -374,6 +374,7 @@ OUTPUT — return ONLY this JSON object, nothing else.
   },
 
   "trajectory": "escalating" | "stable" | "completing" | "unknown",
+  "predictive_horizon": "30d" | "60d" | "90d" | "180d+" | null,
   "large_employer_flag": boolean,
 
   "summary": "3-4 sentence brief written for someone worried about their job. Lead with the plain-English verdict. Use conversational language. Reference programme name, headcount numbers, and dates where known. Max 60 words. End with 'This reflects confirmed public announcements.' OR 'This is a predictive signal based on public filings — not a confirmed outcome.'",
@@ -465,6 +466,7 @@ function emptyIntelligence(): ComprehensiveIntelligence {
     },
     waves: { waves_confirmed: 0, further_waves_signal: null, evidence_quote: null, confidence: 'low' },
     trajectory: 'unknown',
+    predictive_horizon: null,
     large_employer_flag: false,
     summary: '',
     reasoning_chain: '',
@@ -502,6 +504,7 @@ function normaliseIntelligence(raw: any): ComprehensiveIntelligence {
     waves: normaliseWaves(raw.waves),
     trajectory: ['escalating','stable','completing','unknown'].includes(raw.trajectory)
       ? raw.trajectory : 'unknown',
+    predictive_horizon: normalisePredictiveHorizon(raw.predictive_horizon),
     large_employer_flag: !!raw.large_employer_flag,
     summary: typeof raw.summary === 'string' ? raw.summary.trim() : '',
     reasoning_chain: typeof raw.reasoning_chain === 'string' ? raw.reasoning_chain.trim() : '',
@@ -512,6 +515,12 @@ function normaliseIntelligence(raw: any): ComprehensiveIntelligence {
 
 function normaliseConfidence(c: any): ConfidenceTier {
   return c === 'high' || c === 'medium' || c === 'low' ? c : 'low';
+}
+
+// v7.2: predictive_horizon — when Sonnet believes a signal is most likely
+// to materialise. Defaults to null (unknown) if missing or invalid.
+function normalisePredictiveHorizon(h: any): PredictiveHorizon {
+  return h === '30d' || h === '60d' || h === '90d' || h === '180d+' ? h : null;
 }
 
 function normaliseConfirmedEvent(e: any): IntelligenceConfirmedEvent | null {
@@ -531,9 +540,11 @@ function normaliseConfirmedEvent(e: any): IntelligenceConfirmedEvent | null {
 function normaliseForwardSignal(s: any): IntelligenceForwardSignal | null {
   if (!s || typeof s !== 'object') return null;
   if (!s.description || !s.source_ref || !s.source_quote) return null;
-  const validTypes = ['activist_pressure','sustained_losses','ceo_language','cost_pressure',
+  // v7.2: includes new forward-looking predictive signal types
+  const validTypes: ForwardSignalType[] = ['activist_pressure','sustained_losses','ceo_language','cost_pressure',
     'headcount_drop','impairment','nt_filing','strategic_distress','profitability_pivot',
-    'restructuring_charge','other'];
+    'restructuring_charge','hiring_freeze','executive_exodus','office_closure',
+    'product_discontinuation','debt_covenant_risk','other'];
   return {
     signal_type:     validTypes.includes(s.signal_type) ? s.signal_type : 'other',
     description:     String(s.description).trim(),
