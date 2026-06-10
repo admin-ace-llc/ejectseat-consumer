@@ -527,7 +527,7 @@ async function runV7Pipeline(
         lastUpdated:  new Date().toISOString(),
         companyEligibility: eligibility,
       },
-      pipelineVersion: 'v7.2',
+      pipelineVersion: 'v7' as const,
     } as RiskScore,
     company: { name: eligibility.legalName || companyName, ticker, cik: eligibility.cik },
     signalsGated: false,
