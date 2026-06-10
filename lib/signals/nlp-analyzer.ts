@@ -130,6 +130,17 @@ function safeParseJSON<T>(text: string, fallback: T): T {
 // Compact the companyFacts XBRL JSON for the prompt (token budget)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// v7.2: any of these line items, when they recur across multiple distinct
+// fiscal periods with positive values, indicate an ONGOING restructuring
+// programme even if no programme name appears anywhere in the filings.
+const RESTRUCTURING_TREND_KEYS = new Set([
+  'RestructuringCharges',
+  'RestructuringCostsAndAssetImpairmentCharges',
+  'SeveranceCosts1',
+  'BusinessExitCosts1',
+  'RestructuringProvision',
+]);
+
 function compactCompanyFacts(facts: any): string {
   if (!facts?.facts) return '(no XBRL facts available)';
   const lines: string[] = [];
@@ -147,6 +158,10 @@ function compactCompanyFacts(facts: any): string {
     'RestructuringProvision',
     'EmployeeBenefitsExpense',
   ]);
+
+  // v7.2: track distinct (fy, fp) periods carrying a positive restructuring/
+  // severance/exit charge so we can surface a trend line below.
+  const restructuringPeriods = new Map<string, { val: number; end: string; fy: any; fp: any }>();
 
   for (const taxonomy of ['us-gaap', 'ifrs-full', 'dei']) {
     const items = facts.facts[taxonomy];
@@ -167,13 +182,41 @@ function compactCompanyFacts(facts: any): string {
         for (const e of recent) {
           const val = unitKey === 'pure' ? fmtCount(e.val) : fmtUSD(e.val);
           lines.push(`${taxonomy}:${key} | FY${e.fy || '?'} ${e.fp || ''} | end=${e.end || '?'} | ${val} | accn=${e.accn || '?'} | filed=${e.filed || '?'}`);
+
+          if (RESTRUCTURING_TREND_KEYS.has(key) && e.val > 0) {
+            const periodLabel = `${e.fy || '?'}-${e.fp || (e.end ? e.end.slice(0, 7) : '?')}`;
+            const end = e.end || (e.fy ? `${e.fy}-12-31` : '');
+            const existing = restructuringPeriods.get(periodLabel);
+            if (!existing || e.val > existing.val) {
+              restructuringPeriods.set(periodLabel, { val: e.val, end, fy: e.fy, fp: e.fp });
+            }
+          }
         }
       }
     }
   }
 
   if (lines.length === 0) return '(no relevant XBRL line items in last 2 years)';
-  return lines.join('\n').slice(0, 4_000);
+
+  // v7.2: emit an explicit RESTRUCTURING TREND summary line. When charges
+  // recur across 2+ distinct fiscal periods, this is a strong signal of an
+  // ongoing (even if unnamed) cost-reduction programme — surface it plainly
+  // so it isn't missed in 4,000 chars of raw XBRL line items.
+  if (restructuringPeriods.size > 0) {
+    const periods = [...restructuringPeriods.values()].sort((a, b) => Date.parse(a.end || '1970-01-01') - Date.parse(b.end || '1970-01-01'));
+    const total = periods.reduce((sum, p) => sum + p.val, 0);
+    const periodLabels = periods.map(p => `FY${p.fy || '?'} ${p.fp || ''}`.trim()).join(', ');
+    if (periods.length >= 2) {
+      lines.push('');
+      lines.push(`RESTRUCTURING TREND: charges recorded in ${periods.length} DISTINCT fiscal periods (${periodLabels}), cumulative ${fmtUSD(total)}. ` +
+        `No period shows a $0 value, which would indicate completion. Treat this as an ONGOING cost-reduction programme even though no formal programme name may be disclosed.`);
+    } else {
+      lines.push('');
+      lines.push(`RESTRUCTURING TREND: charge recorded in 1 fiscal period so far (${periodLabels}), ${fmtUSD(total)}. Watch for recurrence in subsequent filings.`);
+    }
+  }
+
+  return lines.join('\n').slice(0, 4_200);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -244,17 +287,23 @@ CRITICAL RULES — violations cause downstream validation failures:
 STATE DEFINITIONS:
 - CLEAR  (score 0–35):  No material signals. No restructuring charges. No forward indicators of cost reduction or workforce pressure.
 - WATCH  (score 25–64): Forward indicators present. IMPORTANT: ANY restructuring charge in a 10-Q/10-K, ANY cost-reduction language from the CEO, ANY sustained net losses, or ANY activist pressure AUTOMATICALLY qualifies for at minimum WATCH score 25-35. Do NOT return CLEAR if a restructuring charge exists in the XBRL data or filing text, even if the charge appears non-workforce (real estate exits, operational restructuring) — all restructuring signals financial stress.
-- LIKELY (score 45–78): Multiple independent corroborating signals across filings, calls, and news, OR a confirmed small cut with additional pressure, OR restructuring charge + CEO cost language + news coverage together.
-- ACTIVE (score 60–90): Confirmed layoff event evidenced by one or more of: (a) 8-K Item 2.05 or 2.06 in the filing bundle, (b) a named multi-year transformation programme currently mid-cycle with explicit headcount targets, (c) court-filed bankruptcy, OR (d) news coverage with confirmed headcount figures AND corroborating SEC language. A restructuring charge in a 10-Q alone, without explicit workforce announcement, does NOT qualify for ACTIVE — it qualifies for WATCH or LIKELY.
+- LIKELY (score 45–78): Multiple independent corroborating signals across filings, calls, and news, OR a confirmed small cut with additional pressure, OR restructuring charge + CEO cost language + news coverage together, OR a RECURRING/MULTI-PERIOD restructuring charge pattern (see rule 7 below).
+- ACTIVE (score 60–90): Confirmed layoff event evidenced by one or more of: (a) 8-K Item 2.05 or 2.06 in the filing bundle, (b) a named multi-year transformation programme currently mid-cycle with explicit headcount targets, (c) court-filed bankruptcy, OR (d) news coverage with confirmed headcount figures AND corroborating SEC language. A restructuring charge in a 10-Q alone, without explicit workforce announcement, does NOT qualify for ACTIVE — it qualifies for WATCH or LIKELY (and can reach the upper end of LIKELY under rule 7).
 
 90-DAY RECENCY RULE: ACTIVE is appropriate when the confirmed event is within 90 days of today AND/OR there are explicit escalation signals. Older events with no fresh signals should be LIKELY or WATCH.
 
+7. MULTI-PERIOD RESTRUCTURING ESCALATION (recurring charges = ongoing programme). The XBRL FINANCIAL FACTS block may include a "RESTRUCTURING TREND" line that has already identified whether restructuring/severance/business-exit charges were recorded in 2+ DISTINCT fiscal periods (e.g. a full fiscal year AND a subsequent quarter), with no period showing completion ($0 or a sharp step-down).
+   - If this trend line shows charges across 2+ distinct periods, treat the company as having an ONGOING, UNNAMED cost-reduction programme — even if no 8-K, press release, or named programme exists. Set programme.timeline = "multi_year" and programme.phase = "mid" (or "late" only if a later period's charge is materially smaller than earlier ones, suggesting wind-down). Populate programme.recognised_to_date_usd with the cumulative figure from the trend line, and set programme.evidence_quote to a quote drawn from the XBRL trend line or the underlying filing text.
+   - This pattern alone is sufficient for LIKELY, NOT just WATCH. Recurring restructuring charges almost always carry a severance/headcount component even when filings don't break it out explicitly — set inferred=true on any headcount estimate derived this way.
+   - Calibrate the score within LIKELY based on scale and persistence: 2 distinct periods with cumulative charges under $100M → score ~46-55. 2 distinct periods with cumulative charges over $250M, OR 3+ distinct periods at any size → score ~56-70 (this can push the overall risk into the "HIGH" band even without an explicit workforce announcement). Do not let the absence of an 8-K Item 2.05/2.06 cap the score at WATCH when this trend pattern is present — that absence affects the STATE choice (LIKELY vs ACTIVE), not the ceiling within LIKELY.
+   - Still apply confidence floors normally: a recurring-charge-only pattern with no corroborating news or transcript commentary should generally be "medium" confidence, not "high".
+
 SCORING ANCHORS — use these as calibration:
 - Score 0–15:   Truly no signals. Zero restructuring charges. Positive headcount trend. No news.
-- Score 16–30:  Minor signal — single restructuring charge, cost-efficiency language only, no confirmed event.
-- Score 31–45:  WATCH territory — restructuring charge + CEO cost language, OR multiple quarters of losses, OR news coverage without SEC confirmation.
-- Score 46–60:  LIKELY territory — multiple corroborating signals, OR small confirmed cut with ongoing programme language.
-- Score 61–75:  ACTIVE — confirmed event within 90 days, single wave, programme in early/mid phase.
+- Score 16–30:  Minor signal — single restructuring charge in ONE fiscal period only, cost-efficiency language only, no confirmed event, no recurrence yet.
+- Score 31–45:  WATCH territory — restructuring charge + CEO cost language, OR multiple quarters of losses, OR news coverage without SEC confirmation. (If charges recur across 2+ distinct periods, use rule 7 instead — this band is for single-period charges only.)
+- Score 46–60:  LIKELY territory — multiple corroborating signals, OR small confirmed cut with ongoing programme language, OR a recurring restructuring charge pattern (rule 7) of moderate scale (2 periods, cumulative under $100M).
+- Score 61–75:  ACTIVE — confirmed event within 90 days, single wave, programme in early/mid phase. ALSO applies under rule 7 to a recurring restructuring charge pattern (2+ periods) with cumulative charges over $250M or 3+ distinct periods, even without a confirmed workforce announcement — STATE remains LIKELY in that case (large/persistent recurring charge, but no confirmed event), only the SCORE reaches this range.
 - Score 76–90:  ACTIVE — multi-wave, large-scale, ongoing, or bankruptcy.
 
 SEVERITY TIERS for forward_signals:
@@ -288,7 +337,7 @@ EARNINGS CALL TRANSCRIPTS (prepared remarks + Q&A where available)
 ${transcriptsBlock}
 
 ═══════════════════════════════════════════════════════════════
-TIER A/B/C MEDIA (last 30 days)
+TIER A/B/C MEDIA (last 120 days)
 ═══════════════════════════════════════════════════════════════
 ${newsBlock}
 
@@ -377,7 +426,7 @@ OUTPUT — return ONLY this JSON object, nothing else.
   "predictive_horizon": "30d" | "60d" | "90d" | "180d+" | null,
   "large_employer_flag": boolean,
 
-  "summary": "3-4 sentence brief written for someone worried about their job. Lead with the plain-English verdict. Use conversational language. Reference programme name, headcount numbers, and dates where known. Max 60 words. End with 'This reflects confirmed public announcements.' OR 'This is a predictive signal based on public filings — not a confirmed outcome.'",
+  "summary": "3-5 sentence brief written for someone worried about their job at this company. Sentence 1: plain-English verdict using the STATE word (e.g. 'Salesforce is showing signs of an ongoing cost-reduction programme' rather than just restating the score). Sentence 2: the SPECIFIC evidence driving the score — if rule 7 (multi-period restructuring) applied, name the periods and dollar figures (e.g. 'It recorded $586M in restructuring charges in FY2025 and another $80M in Q1 FY2027 — back-to-back periods with no sign of the programme winding down'). Sentence 3: what is and is NOT confirmed — be explicit, e.g. 'No 8-K workforce-reduction notice or specific headcount target has been filed yet, but recurring charges of this size historically carry a severance component.' Sentence 4 (optional): function/role guidance if function_risk has entries, or what to watch for next (next filing date, earnings call). Final sentence: end with 'This reflects confirmed public announcements.' if confirmed_events is non-empty, OR 'This is a predictive signal based on recurring financial filings — not a confirmed layoff announcement.' otherwise. Avoid generic boilerplate like 'no workforce reduction announcement is confirmed' as a STANDALONE sentence with nothing else — always pair any 'not confirmed' statement with the concrete positive evidence that IS present. Max 80 words.",
 
   "reasoning_chain": "Max 3 sentences: key signals found, why you chose this state, primary uncertainty."
 }
