@@ -361,7 +361,10 @@ async function runV7Pipeline(
   const [bundlePart, transcripts, news, quarterlyStatus] = await Promise.all([
     fetchEvidenceBundle(eligibility.cik!, companyName, 365),
     fetchRecentTranscripts(ticker || null, 2),
-    fetchRecentNews(companyName, 30),
+    // v7.2: widened from 30d → 120d. Layoff-relevant coverage (e.g. CEO
+    // commentary on AI-driven workforce reductions) often predates the
+    // triggering 10-Q by weeks/months; a 30-day window was missing it.
+    fetchRecentNews(companyName, 120),
     import('@/lib/signals/quarterly-calendar').then(m => m.getQuarterlySignalStatus(eligibility.cik!))
       .catch(() => null),
   ]);
