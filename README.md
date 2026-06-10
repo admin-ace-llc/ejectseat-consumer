@@ -1,115 +1,133 @@
-# EjectSeat Consumer v7
+# EjectSeat
 
-Layoff-risk predictor for US-listed public companies (and FPIs). Live at **ejectseat.io**.
+**Layoff-risk predictor for US-listed public companies. Enter a ticker. Get a data-backed risk score in seconds.**
 
-This package is the **backend rebuild** for v7 — the pipeline that produces the risk score. The `public/index.html` UI rebuild (motion system, LandingZone integration, inline CTAs) lands in the next session.
-
----
-
-## What changed in v7
-
-| Area | v6.1 | v7 |
-|------|------|------|
-| Analysis pipeline | 5+ Haiku calls (prefilter → classify → verify → analyze → summarise) | **Single comprehensive Sonnet call** reading full evidence bundle |
-| State machine | 5 states (WATCHING, ACTIVE_MULTI_YEAR, CONTINUATION_RISK…) | **4 states** — CLEAR / WATCH / LIKELY / ACTIVE |
-| Bankruptcy | Hard override pinned to ACTIVE_MULTI_YEAR | **No hard override** — earned from evidence, same as everything else |
-| Earnings calls | Prepared-remarks text only (from 8-K Item 2.02) | **Motley Fool transcript scraper** — captures Q&A where CEOs go off-script |
-| 8-K scanning | Item-number filtered (the cause of the Snap bug) | **All 8-K / 6-K / NT** full-text → Sonnet decides what's material |
-| Scoring | Raw points × corroboration × phase multiplier | **Sonnet returns state+score**, engine validates and applies signal-awaited penalty |
-| Strict mode | Soft — Sonnet could invent sources | **Hard** — post-validator strips unattributed claims, enforces confidence floor, flags for review |
-| Number formatting | Mixed raw / shorthand | **Business shorthand everywhere** ($4.7M not $4,700,000) |
+[![Live Tool](https://img.shields.io/badge/Live%20Tool-ejectseat.io-blue)](https://ejectseat.io)
 
 ---
 
-## Architecture
+## What It Does
+
+EjectSeat analyzes publicly available signals — SEC filings, earnings call transcripts, recent news — and returns a **layoff risk score** for any US-listed company.
+
+It tells you whether a company is in a **CLEAR**, **WATCH**, **LIKELY**, or **ACTIVE** layoff state, and shows you exactly what evidence drove the score: revenue trends, headcount language in 10-Ks, restructuring charges, executive tone in Q&A sessions, and confirmed layoff events.
+
+### Why it exists
+
+Every quarter, tens of thousands of employees learn about layoffs from a Slack message or a news alert — not from months of reading between the lines of their company's SEC filings and earnings calls. That information is all public. Most people just don't have the time or tools to process it.
+
+EjectSeat does that processing for you.
+
+---
+
+## Who Uses This
+
+**Employees** at publicly traded companies who want an early-warning signal before making financial decisions — accepting a mortgage, declining a competing offer, or deciding whether to vest.
+
+**Recruiters and talent acquisition teams** who use layoff signals to identify which companies are actively shedding talent and time their outreach accordingly.
+
+**Journalists and analysts** covering the tech industry who need a quick data-backed read on whether a restructuring announcement is the beginning of something larger.
+
+**HR and people ops professionals** who want to benchmark their company's risk signals against peers.
+
+**Job seekers** evaluating whether to accept an offer from a company that seems unstable.
+
+---
+
+## How the Score Works
+
+EjectSeat reads the full SEC evidence bundle for a given company — 10-K/10-Q filings, 8-K events, earnings call Q&A transcripts (including the off-script moments), and recent tier-A/B/C news — and runs a single comprehensive Claude Sonnet analysis that returns a structured risk assessment.
+
+### Risk States
+
+| State | Score Band | Meaning |
+|-------|------------|---------|
+| CLEAR | 0–35 | No material signals of near-term layoffs |
+| WATCH | 25–64 | Forward indicators present (margin pressure, hiring freeze language) but no confirmed event |
+| LIKELY | 45–78 | Multiple corroborating signals across filings, calls, and news |
+| ACTIVE | 60–90 | Confirmed layoffs within 90 days, or multi-year restructuring programme in motion |
+
+Score bands overlap intentionally — a WATCH company at 62 is very different from a WATCH company at 28, and the score surface reflects that nuance.
+
+### What the pipeline reads
+
+- **SEC 10-K and 10-Q filings** — headcount, restructuring charges, going concern language
+- **8-K and 6-K filings** — all events, not just the filtered ones (the full-text approach caught a Snap-style misclassification that item-number filtering missed)
+- **Earnings call Q&A transcripts** (Motley Fool) — the prepared remarks are scripted; the Q&A is where executives go off-script
+- **Tier A/B/C news** — prioritized by source credibility
+- **Historical layoff programmes** — whether an announced programme is still actively running
+
+---
+
+## Architecture (v7)
 
 ```
-┌──────────────────── /api/score ────────────────────┐
-│                                                     │
-│  1. validateCompany(name, ticker)   →  CIK + legalName
-│                                                     │
-│  2. PARALLEL fetch evidence:                        │
-│       ├── fetchEvidenceBundle()  (SEC filings+facts)│
-│       ├── fetchRecentTranscripts() (Motley Fool Q&A)│
-│       ├── fetchRecentNews()        (Tier A/B/C)     │
-│       └── fetchLegacyAuditSignals() (UI audit strip)│
-│                                                     │
-│  3. comprehensiveAnalysis(bundle)  →  Sonnet call   │
-│        - strict system prompt                       │
-│        - full filing text + transcripts + news      │
-│        - returns ComprehensiveIntelligence object   │
-│                                                     │
-│  4. runPostValidators(intel, bundle)                │
-│        - strips unattributed source_refs            │
-│        - enforces confidence floor (3/2/1 sources)  │
-│        - flags ACTIVE w/o confirmed event as review │
-│                                                     │
-│  5. validateAndFinaliseScore(intel, signalAwaited)  │
-│        - clamps score to state band                 │
-│        - applies 0.85× signal_awaited penalty       │
-│                                                     │
-│  6. Persist + return unified RiskScore response     │
-│                                                     │
-└─────────────────────────────────────────────────────┘
+/api/score
+  1. validateCompany(name, ticker)      →  CIK + legal name
+  2. Parallel evidence fetch:
+       ├── SEC filings + EDGAR facts
+       ├── Earnings call transcripts (Motley Fool Q&A)
+       ├── Recent news (Tier A/B/C)
+       └── Legacy audit signals
+  3. comprehensiveAnalysis(bundle)      →  Single Sonnet call
+  4. runPostValidators(intel, bundle)   →  Strip unattributed claims
+  5. validateAndFinaliseScore(intel)    →  Clamp to state band
+  6. Persist + return RiskScore
 ```
 
-## Feature flag
+Built on Next.js + TypeScript, deployed on Vercel. Supabase for persistence.
 
-All of the above runs when `USE_COMPREHENSIVE_V2=true` (the default). Setting the env var to `false` in Vercel flips to the v5 fallback path instantly — no redeploy. That is the rollback mechanism.
+---
 
-## State bands (v7)
+## Key Files
 
-| State | Band (score) | Meaning |
-|-------|--------------|---------|
-| CLEAR  | 0–35  | No material signals |
-| WATCH  | 25–64 | Forward indicators, no confirmed event |
-| LIKELY | 45–78 | Multiple corroborating signals |
-| ACTIVE | 60–90 | Confirmed layoffs within 90 days OR multi-year programme in motion OR bankruptcy |
+| File | Purpose |
+|------|---------|
+| `app/api/score/route.ts` | Main API orchestrator |
+| `lib/signals/sec.ts` | SEC evidence bundle fetcher |
+| `lib/signals/transcripts.ts` | Motley Fool scraper (graceful fallback) |
+| `lib/signals/news.ts` | Tier A/B/C news aggregator |
+| `lib/signals/nlp-analyzer.ts` | Comprehensive Sonnet analysis + post-validators |
+| `lib/scoring/engine.ts` | Band validator + signal-awaited penalty |
+| `types/index.ts` | Shared types + state normaliser |
+| `scripts/regression-test.ts` | 12-case regression matrix |
 
-Ranges overlap on purpose so Sonnet can reflect nuance within each state.
+---
 
-## Key files
-
-```
-types/index.ts                        Shared types + state normaliser
-lib/format.ts                         Business-number formatting (single source of truth)
-lib/signals/sec.ts                    Evidence-bundle fetcher (pure; no interpretation)
-lib/signals/transcripts.ts            Motley Fool scraper; graceful fallback to []
-lib/signals/news.ts                   Tier A/B/C news bundler
-lib/signals/quarterly-calendar.ts     Filing-status detection
-lib/signals/company-validator.ts      Name/ticker → CIK
-lib/signals/landingzone.ts            Adzuna client
-lib/signals/nlp-analyzer.ts           Comprehensive Sonnet call + post-validators
-lib/scoring/engine.ts                 Band validator + signal-awaited penalty
-app/api/score/route.ts                Orchestrator (v7 + v5 fallback)
-supabase/schema.sql                   Idempotent migration
-scripts/regression-test.ts            12-case regression matrix
-```
-
-## Running the regression test
+## Running the Regression Test
 
 ```bash
+# Against local
 TARGET_URL=http://localhost:3000 npm run regression
-# or against production:
-TARGET_URL=https://ejectseat-consumer-cfad.vercel.app npm run regression
+
+# Against production
+TARGET_URL=https://ejectseat.io npm run regression
 ```
 
-The script tests Snap (the original bug), Amazon (must not attribute Rivian), MMC (v6.1 validator failure), private companies, indexes, and control cases. Exits non-zero on failure.
+Tests include Snap (original bug), Amazon (must not attribute Rivian layoffs), MMC (v6.1 validator failure), private companies, indexes, and control cases.
 
-## The Motley Fool scraper
+---
 
-The transcripts scraper is the most fragile component — Motley Fool's HTML changes occasionally. When selectors break, `fetchRecentTranscripts` returns `[]` and the pipeline continues SEC-only. No user-visible error.
+## Feature Flag / Rollback
 
-To update selectors: grep `MOTLEY_FOOL_SELECTORS` in `lib/signals/transcripts.ts`.
+```
+USE_COMPREHENSIVE_V2=true   # default — runs v7 pipeline
+USE_COMPREHENSIVE_V2=false  # instant rollback to v5 path, no redeploy
+```
 
-Abstraction layer: adding Seeking Alpha or AlphaSense as a source means adding a second fetcher in that file and aggregating — no caller changes.
+---
 
-## What's pending for next session
+## Topics
 
-- `public/index.html` rebuild with motion system (score gauge animation, programme progress bar, state badge fade-slide, LandingZone cascade)
-- Auto-load LandingZone on result reveal using last-used role + locations from localStorage
-- Inline "X companies hiring your role" CTA on MEDIUM/HIGH scores
-- Risk-aware LandingZone sort
-- Low-confidence pill with tooltip
-- Loading states tied to real pipeline milestones
-- Motley Fool selector validation against a live ticker
+`layoffs` · `layoff-tracker` · `sec-filings` · `earnings-calls` · `risk-score` · `job-security` · `tech-layoffs` · `company-analysis` · `edgar` · `workforce-reduction` · `restructuring` · `ai-analysis` · `employment` · `fintech`
+
+---
+
+## Roadmap
+
+- Score gauge animation + motion system on result reveal
+- Auto-load open roles at the company (via LandingZone) when risk is ACTIVE or LIKELY
+- Inline "X companies hiring your role" CTA on high-risk results
+- Risk-aware job sort (prioritize stable companies)
+- Low-confidence pill with source transparency tooltip
+- Motley Fool selector health check against live tickers
