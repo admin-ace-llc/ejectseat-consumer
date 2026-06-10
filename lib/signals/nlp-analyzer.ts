@@ -1,11 +1,27 @@
-// lib/signals/nlp-analyzer.ts — EjectSeat Consumer v7.3
+// lib/signals/nlp-analyzer.ts — EjectSeat Consumer v7.4
 //
 // ARCHITECTURE:
 //   v5:  5+ Haiku calls (prefilter / classify / verify / analyse / summarise)
 //   v7:  ONE comprehensive Sonnet call per company
 //   v7.2: Predictive signal types + predictive_horizon field
 //   v7.3: COMPREHENSIVE LAYOFF DETECTION — catches all layoff types regardless of
-//         whether they trigger a formal SEC filing. Key changes:
+//         whether they trigger a formal SEC filing.
+//   v7.4: XBRL ESCALATION FIX — root cause of Salesforce/META scoring 0/CLEAR
+//         despite visible restructuring charges in XBRL data.
+//         Changes:
+//           + detectXBRLRestructuringCharges() helper — parses companyFacts directly
+//           + XBRL escalation block in runPostValidators():
+//               $1M–$9M  → minimum WATCH/28
+//               $10M–$49M → minimum WATCH/40
+//               $50M+     → minimum WATCH/50 + severity-2 forward signal injected
+//           + System prompt hardened: explicit XBRL rule added to EVIDENCE RULES
+//             and CLEAR definition — Claude must never return CLEAR when XBRL shows
+//             restructuring charges > $0 in the last 2 years.
+//         These changes act as a deterministic safety net AFTER Claude's analysis —
+//         even if Claude misses or underweights XBRL charges, post-validators enforce
+//         the correct minimum state.
+//
+//   v7.3 changes (preserved):
 //
 //   SIGNAL COVERAGE EXPANSION:
 //     + performance_managed_layoffs — PIPs at scale, forced ranking, "managing out underperformers"
@@ -262,6 +278,19 @@ CLAIM BINDING: Every factual claim MUST include:
   - source_quote: a direct quote from that source, 10–200 characters
   If you cannot produce both, omit the claim.
 
+XBRL RULE — CRITICAL: The XBRL FINANCIAL FACTS section below contains data directly from SEC filings. If ANY of the following line items show a value > $0 in the last 2 years, that is a CONFIRMED financial disclosure of restructuring activity:
+  - RestructuringCharges / RestructuringCostsAndAssetImpairmentCharges
+  - SeveranceCosts1
+  - BusinessExitCosts1
+  - RestructuringProvision
+
+When these appear in XBRL facts:
+  - CLEAR is NEVER appropriate, regardless of what media or transcripts say
+  - Minimum state is WATCH
+  - The source_ref for the signal is "xbrl" and source_quote should describe the charge (e.g. "RestructuringCharges: $36.0M, FY2025 Q3")
+  - A $10M+ charge warrants score ≥ 40; a $50M+ charge warrants score ≥ 50
+  - Do NOT require corroborating media to act on XBRL data — the filing IS the primary source
+
 INDUSTRY PATTERNS: You MAY use your general knowledge of how different layoff types manifest (e.g. that PIPs-at-scale are typical of large tech companies, that VSPs often precede formal restructuring) as an interpretive framework. However, you MUST NOT assert specific facts about this company (dates, headcount numbers, programme names, CEO statements) unless they appear in the evidence bundle.
 
 NUMBER FORMATTING: Dollar amounts in business shorthand ($4.7M, $1.2B). Headcounts with comma grouping: 1,000 / 34,000.
@@ -299,6 +328,7 @@ ANY of the following:
 
 CLEAR (score 0–35):
   No material layoff signals across any source type. Company may be growing headcount or in stable plateau. No forward indicators of material restructuring.
+  HARD CONSTRAINT: CLEAR is NEVER appropriate if XBRL shows RestructuringCharges, SeveranceCosts1, or BusinessExitCosts1 > $0 in the last 2 years. A restructuring charge in an SEC filing is a legally disclosed financial fact — it must be scored as minimum WATCH.
 
 ═══════════════════════════════════════
 90-DAY RECENCY RULE
@@ -742,7 +772,69 @@ function normaliseWaves(w: any): WavesIntelligence {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// POST-VALIDATORS — v7.3 expanded
+// v7.4: XBRL restructuring charge detector
+// Parses companyFacts directly to find RestructuringCharges / SeveranceCosts1 /
+// BusinessExitCosts1 / RestructuringProvision in the last 2 years.
+// Returns the largest single charge found and an evidence string for the signal.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface XBRLChargeResult {
+  hasCharges: boolean;
+  maxChargeMillion: number;   // largest single charge in $M
+  totalChargeMillion: number; // sum across all matching entries
+  evidence: string;           // description for signal source_quote
+}
+
+function detectXBRLRestructuringCharges(companyFacts: any): XBRLChargeResult {
+  const empty: XBRLChargeResult = { hasCharges: false, maxChargeMillion: 0, totalChargeMillion: 0, evidence: '' };
+  if (!companyFacts?.facts) return empty;
+
+  const cutoff = Date.now() - 730 * 86_400_000; // 2 years
+  const restructuringKeys = [
+    'RestructuringCharges',
+    'RestructuringCostsAndAssetImpairmentCharges',
+    'SeveranceCosts1',
+    'BusinessExitCosts1',
+    'RestructuringProvision',
+  ];
+
+  let maxMillion = 0;
+  let totalMillion = 0;
+  let bestEvidence = '';
+
+  for (const taxonomy of ['us-gaap', 'ifrs-full']) {
+    const items = companyFacts.facts[taxonomy];
+    if (!items) continue;
+    for (const key of restructuringKeys) {
+      const item = items[key];
+      if (!item?.units?.USD) continue;
+      const entries: any[] = item.units.USD;
+      if (!Array.isArray(entries)) continue;
+      for (const e of entries) {
+        if (typeof e.val !== 'number' || e.val <= 0) continue;
+        const end = e.end || (e.fy ? `${e.fy}-12-31` : null);
+        if (!end || Date.parse(end) < cutoff) continue;
+        const millions = Math.round((e.val / 1_000_000) * 10) / 10;
+        totalMillion += millions;
+        if (millions > maxMillion) {
+          maxMillion = millions;
+          bestEvidence = `${key}: $${millions}M (period ending ${end}, filed ${e.filed || 'unknown'})`;
+        }
+      }
+    }
+  }
+
+  if (maxMillion === 0) return empty;
+  return {
+    hasCharges: true,
+    maxChargeMillion: maxMillion,
+    totalChargeMillion: Math.round(totalMillion * 10) / 10,
+    evidence: bestEvidence,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POST-VALIDATORS — v7.4 (includes XBRL escalation)
 // ─────────────────────────────────────────────────────────────────────────────
 
 function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBundle): ComprehensiveIntelligence {
@@ -832,6 +924,54 @@ function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBun
     intel.low_confidence_reason = independentSources === 0
       ? 'No corroborating sources in evidence bundle'
       : `Only ${independentSources} supporting source${independentSources === 1 ? '' : 's'}`;
+  }
+
+  // ── v7.4: XBRL RESTRUCTURING CHARGE ESCALATION ──────────────────────────────
+  // If XBRL contains restructuring charges / severance costs in the last 2 years
+  // and Claude returned CLEAR, enforce minimum WATCH. This is a deterministic
+  // safety net — XBRL data is legally disclosed financial fact, not inference.
+  // ─────────────────────────────────────────────────────────────────────────────
+  if (intel.state === 'CLEAR') {
+    const xbrl = detectXBRLRestructuringCharges(bundle.companyFacts);
+    if (xbrl.hasCharges) {
+      const charge = xbrl.maxChargeMillion;
+      let minScore: number;
+      let severity: 1 | 2 | 3 | 4;
+
+      if (charge >= 50) {
+        minScore = 50;
+        severity = 2;
+        notes.push(`XBRL escalation: RestructuringCharges $${charge}M — enforcing WATCH/50 (large charge ≥$50M)`);
+      } else if (charge >= 10) {
+        minScore = 40;
+        severity = 3;
+        notes.push(`XBRL escalation: RestructuringCharges $${charge}M — enforcing WATCH/40 (significant charge $10M–$49M)`);
+      } else {
+        minScore = STATE_BANDS.WATCH.floor;
+        severity = 4;
+        notes.push(`XBRL escalation: RestructuringCharges $${charge}M — enforcing WATCH/${STATE_BANDS.WATCH.floor} (charge $1M–$9M)`);
+      }
+
+      intel.state = 'WATCH';
+      intel.score = Math.max(intel.score, minScore);
+      requiresReview = true;
+
+      // Inject synthetic restructuring_charge forward signal if Claude missed it
+      const alreadyHasCharge = intel.forward_signals.some(s => s.signal_type === 'restructuring_charge');
+      if (!alreadyHasCharge) {
+        intel.forward_signals.push({
+          signal_type: 'restructuring_charge',
+          description: `XBRL restructuring/severance charge of $${charge}M detected in recent SEC filings (last 2 years). This is a legally disclosed financial fact indicating past or ongoing workforce reduction activity.`,
+          source_ref: 'xbrl',
+          source_quote: xbrl.evidence.slice(0, 400),
+          severity,
+          forward_looking: false,
+          escalation_type: 'escalation',
+          inferred: false,
+        });
+        notes.push(`Injected restructuring_charge forward signal from XBRL: ${xbrl.evidence.slice(0, 80)}`);
+      }
+    }
   }
 
   // v7.3: MEDIA ESCALATION RULE
