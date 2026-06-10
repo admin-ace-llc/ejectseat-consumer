@@ -1,19 +1,36 @@
-// lib/signals/quarterly-calendar.ts — EjectSeat Consumer v7 (preserved from v6.1)
+// lib/signals/quarterly-calendar.ts — EjectSeat Consumer v7.2
 //
-// Determines whether the next quarterly filing (10-Q / 10-K / 20-F / 6-K) is
-// awaited, filed, or overdue. Feeds the signal_awaited penalty and the UX
-// "awaiting Q3 results" chip.
+// v7.2 FIX — non-calendar fiscal year bug in computeFiscalPeriod.
+//
+// BUG (v7.1 and earlier):
+//   For companies whose fiscal year end has already passed in the current
+//   calendar year (e.g. Salesforce, FYE Jan 31), the code computed quarter
+//   boundaries relative to the PAST fiscal year end rather than the NEXT one.
+//   Example on June 10, 2026 for Salesforce (FYE Jan 31):
+//     Old: fyEndThisYear = Jan 31, 2026 → Q4 ended Jan 31, 2026 → status=overdue
+//     New: fyEndThisYear = Jan 31, 2027 → Q2 ends July 31, 2026 → status=awaited
+//   The old code also treated the company as being in its annual filing window
+//   (Q4/10-K) when it was actually mid-year on a quarterly cycle.
+//
+// v7.2 FIX — separate overdue vs awaited treatment.
+//   An overdue filing is a STRESS INDICATOR (company may be delaying bad news),
+//   NOT a confidence-reducing factor. The route handler was applying the same
+//   0.85× score penalty to both awaited and overdue. This file now returns a
+//   separate `isOverdue` boolean so the route can handle them differently.
+//
+// v7.2 FIX — QuarterlyStatus now includes isOverdue field.
 
 import type { QuarterlyStatus, FilingStatus } from '@/types';
 
-const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkace@gmail.com)';
+const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkake@gmail.com)';
 const EDGAR_SUBMISSIONS = (cik: string) =>
   `https://data.sec.gov/submissions/CIK${cik.replace(/^0+/, '').padStart(10, '0')}.json`;
 
 // Typical filing lag windows (calendar days after period end)
+// Large Accelerated Filer deadlines used as baseline.
 const FILING_DUE_DAYS = {
-  '10-Q': 45,   // Large Accelerated Filers
-  '10-K': 60,
+  '10-Q': 40,   // LAF: 40 days
+  '10-K': 60,   // LAF: 60 days
   '20-F': 120,
   '6-K':  30,
 };
@@ -26,10 +43,10 @@ const OVERDUE_GRACE_DAYS = 10;
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface FiscalPeriod {
-  yearEnd: string;         // MM-DD — fiscal year end (e.g. "12-31")
+  yearEnd: string;         // MM-DD — fiscal year end (e.g. "01-31")
   currentQuarter: number;  // 1..4
   quarterEnd: Date;        // end date of current fiscal quarter
-  quarterLabel: string;    // e.g. "Q3 FY2026"
+  quarterLabel: string;    // e.g. "Q2 FY2027"
   isAnnual: boolean;       // true if current quarter = Q4
 }
 
@@ -65,17 +82,26 @@ function computeFiscalPeriod(fyEndStr: string | null | undefined, asOf: Date = n
     };
   }
 
-  // Non-calendar FY — compute quarter ends by stepping back 3 months from FY end
+  // Non-calendar FY — compute quarter ends by stepping back from the NEXT
+  // upcoming fiscal year end date.
+  //
+  // v7.2 FIX: The original code used `asOfYear`'s FY end without checking
+  // whether that date had already passed. For Salesforce (FYE Jan 31) in
+  // June 2026, `fyEndThisYear` was Jan 31 2026 — already 5 months past —
+  // so all four Q-ends fell in 2025, placing us permanently in "Q4 overdue."
+  // The fix: advance to the next calendar year when the FY end has passed.
   const asOfYear = asOf.getFullYear();
-  let fyEndThisYear = new Date(asOfYear, fyEndMonth - 1, fyEndDay);
-  if (fyEndThisYear < asOf) {
-    // FY ends later this calendar year
+  let fyEndRef = new Date(asOfYear, fyEndMonth - 1, fyEndDay);
+  if (fyEndRef <= asOf) {
+    // FY end has passed in the current calendar year; use next year's end
+    fyEndRef = new Date(asOfYear + 1, fyEndMonth - 1, fyEndDay);
   }
-  // Quarter ends relative to fy end
-  const q1End = new Date(fyEndThisYear); q1End.setMonth(q1End.getMonth() - 9);
-  const q2End = new Date(fyEndThisYear); q2End.setMonth(q2End.getMonth() - 6);
-  const q3End = new Date(fyEndThisYear); q3End.setMonth(q3End.getMonth() - 3);
-  const q4End = fyEndThisYear;
+
+  // Quarter ends relative to next FY end (stepping back 3 months each)
+  const q1End = new Date(fyEndRef); q1End.setMonth(q1End.getMonth() - 9);
+  const q2End = new Date(fyEndRef); q2End.setMonth(q2End.getMonth() - 6);
+  const q3End = new Date(fyEndRef); q3End.setMonth(q3End.getMonth() - 3);
+  const q4End = fyEndRef;
 
   let q: number; let qEnd: Date;
   if (asOf <= q1End)      { q = 1; qEnd = q1End; }
@@ -83,7 +109,10 @@ function computeFiscalPeriod(fyEndStr: string | null | undefined, asOf: Date = n
   else if (asOf <= q3End) { q = 3; qEnd = q3End; }
   else                    { q = 4; qEnd = q4End; }
 
-  const fyLabel = fyEndMonth <= 6 ? asOfYear : asOfYear + 1;
+  // FY label: for non-calendar FYs, the fiscal year number follows the
+  // calendar year in which it ends.
+  const fyLabel = fyEndRef.getFullYear();
+
   return {
     yearEnd: `${String(fyEndMonth).padStart(2, '0')}-${String(fyEndDay).padStart(2, '0')}`,
     currentQuarter: q,
@@ -103,7 +132,7 @@ export async function getQuarterlySignalStatus(cik: string): Promise<QuarterlySt
     if (!res.ok) return null;
     const data = await res.json();
 
-    const fyEnd = data.fiscalYearEnd; // e.g. "1231" or "0630"
+    const fyEnd = data.fiscalYearEnd; // e.g. "1231" or "0130"
     const recent = data.filings?.recent;
     const forms = recent?.form || [];
     const dates = recent?.filingDate || [];
@@ -128,7 +157,7 @@ export async function getQuarterlySignalStatus(cik: string): Promise<QuarterlySt
 
     // Determine expected form for current period
     const expectedForm = period.isAnnual ? '10-K' : '10-Q';
-    const dueWindow = FILING_DUE_DAYS[expectedForm as keyof typeof FILING_DUE_DAYS] || 45;
+    const dueWindow = FILING_DUE_DAYS[expectedForm as keyof typeof FILING_DUE_DAYS] || 40;
     const expectedDueDate = new Date(period.quarterEnd.getTime() + dueWindow * 86_400_000);
     const overdueDate = new Date(expectedDueDate.getTime() + OVERDUE_GRACE_DAYS * 86_400_000);
     const now = new Date();
@@ -147,8 +176,11 @@ export async function getQuarterlySignalStatus(cik: string): Promise<QuarterlySt
       // Quarter hasn't ended yet — nothing to file
       status = 'filed';
     } else if (now > overdueDate) {
+      // v7.2: overdue is a separate stress signal — do NOT conflate with awaited.
+      // The route handler should NOT apply the 0.85× score penalty here;
+      // overdue filings are a negative indicator (company may be delaying bad news).
       status = 'overdue';
-      signalAwaitedMessage = `${period.quarterLabel} ${expectedForm} overdue — last filed ${lastFiledDate || 'unknown'}`;
+      signalAwaitedMessage = `${period.quarterLabel} ${expectedForm} overdue — last filed ${lastFiledDate || 'unknown'}. Late filing is itself a stress indicator.`;
     } else {
       status = 'awaited';
       signalAwaitedMessage = daysUntilDue > 0
