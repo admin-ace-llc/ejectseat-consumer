@@ -1,15 +1,25 @@
-// lib/scoring/engine.ts — EjectSeat Consumer v7
+// lib/scoring/engine.ts — EjectSeat Consumer v7.2
 //
-// ROLE CHANGE:
-//   v5/v6.1 engine scored from raw signal points + corroboration + phase.
-//   v7 engine is a VALIDATOR — Sonnet returns state+score; engine confirms
-//   it lies in the band, applies signal_awaited penalty, maps to band label.
-//   Bankruptcy HARD OVERRIDE removed per user alignment ("no hard overrides —
-//   we are building a forward-looking predictor"). Sonnet earns the verdict
-//   from the evidence including bankruptcy filings.
+// v7.2 ACCURACY FIXES:
 //
-// v5 fallback math preserved (phase multiplier, corroboration, floors/ceilings)
-// so that if USE_COMPREHENSIVE_V2=false the old path still scores sanely.
+//   1. signalAwaited penalty does NOT apply to ACTIVE state companies.
+//      Confirmed layoffs are confirmed regardless of whether the NEXT filing
+//      is pending. The 0.85× penalty was pushing ACTIVE scores to the band
+//      floor (60), signalling low confidence about events that are already
+//      confirmed. ACTIVE companies now receive no penalty.
+//
+//   2. Overdue filings treated differently from awaited filings.
+//      An overdue filing is a stress indicator, not a confidence reducer.
+//      The validateAndFinaliseScore function now accepts separate
+//      signalAwaited and signalOverdue flags. ACTIVE companies: neither
+//      applies. WATCH/LIKELY companies: awaited gets 0.85×; overdue gets
+//      NO penalty (route handles it as an additive signal instead).
+//
+//   3. validateAndFinaliseScore signature updated to accept CompanyState.
+//      The route passes intel.state so the engine can gate the penalty
+//      without re-deriving it.
+//
+// All v5 fallback math preserved unchanged.
 
 import type {
   Signal, RiskBand, Confidence, CompanyState,
@@ -29,8 +39,7 @@ const V7_BANDS: Record<CompanyState, { floor: number; ceiling: number }> = {
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// v5/v6.1 legacy bands (includes ACTIVE_MULTI_YEAR and CONTINUATION_RISK for
-// the fallback orchestrator path when flag is off)
+// v5/v6.1 legacy bands
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function getStateBounds(state: string): { floor: number; ceiling: number } {
@@ -49,8 +58,10 @@ export function getStateBounds(state: string): { floor: number; ceiling: number 
 
 // ─────────────────────────────────────────────────────────────────────────────
 // v7 PRIMARY — validateAndFinaliseScore
-// Takes the intelligence object from Sonnet, returns the final score with
-// signal_awaited penalty applied and band label computed.
+//
+// v7.2: accepts separate signalAwaited and signalOverdue flags.
+//        ACTIVE companies skip both penalties.
+//        Non-ACTIVE companies: awaited gets 0.85×; overdue gets no penalty.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export interface FinalisedScore {
@@ -67,6 +78,7 @@ export function validateAndFinaliseScore(
   intel: ComprehensiveIntelligence,
   signalAwaited: boolean,
   fullyEligible: boolean,
+  signalOverdue: boolean = false,
 ): FinalisedScore {
   const notes: string[] = [];
   const band = V7_BANDS[intel.state];
@@ -74,18 +86,28 @@ export function validateAndFinaliseScore(
   let score = Math.max(band.floor, Math.min(band.ceiling, intel.score));
   if (score !== intel.score) notes.push(`Score clamped from ${intel.score} to ${score} (${intel.state} band)`);
 
-  if (signalAwaited) {
+  // v7.2: ACTIVE companies skip the signal-awaited penalty entirely.
+  // Confirmed layoffs are confirmed — the next filing being pending doesn't
+  // reduce the confidence of an already-confirmed event.
+  if (signalAwaited && intel.state !== 'ACTIVE') {
     const before = score;
     score = Math.round(score * 0.85);
-    // Keep within band floor
     score = Math.max(band.floor, score);
     notes.push(`Signal-awaited penalty: ${before} → ${score} (0.85× multiplier, floored at ${band.floor})`);
+  } else if (signalAwaited && intel.state === 'ACTIVE') {
+    notes.push('Signal-awaited penalty skipped: ACTIVE state — confirmed events are not downgraded by pending filings');
+  }
+
+  // v7.2: overdue is a stress indicator — no penalty applied.
+  // The route adds it as a forward signal for the model to consider.
+  if (signalOverdue) {
+    notes.push('Overdue filing detected — treated as stress indicator (no score penalty; additive signal)');
   }
 
   return {
     score,
     band: getBand(score),
-    confidence: getConfidence(fullyEligible, signalAwaited, score, intel.confidence),
+    confidence: getConfidence(fullyEligible, signalAwaited, score, intel.confidence, intel.state),
     state: intel.state,
     floor: band.floor,
     ceiling: band.ceiling,
@@ -108,8 +130,11 @@ export function getConfidence(
   signalAwaited: boolean,
   score: number,
   intelConfidence?: 'high' | 'medium' | 'low',
+  state?: CompanyState,
 ): Confidence {
-  if (signalAwaited)  return 'signal_awaited';
+  // v7.2: ACTIVE companies don't get signal_awaited confidence — their event
+  // is confirmed regardless of next filing status.
+  if (signalAwaited && state !== 'ACTIVE') return 'signal_awaited';
   if (!fullyEligible) return 'low';
   if (intelConfidence === 'low') return 'low';
   if (score >= 65 && intelConfidence === 'high')   return 'high';
@@ -131,11 +156,6 @@ export function getPhaseMultiplier(phase: ProgrammePhase | undefined): number {
   }
 }
 
-/**
- * v6.1 bankruptcy override. In v7 this returns null (no hard override by
- * design). Preserved as an exported function so the v5 fallback route still
- * compiles; flagging semantics kept in case we want it back.
- */
 export function getBankruptcyOverride(_b: BankruptcyFiling | undefined): null {
   return null;
 }
@@ -201,7 +221,7 @@ export function computeScore(
   signalAwaited: boolean,
   corroboration: number,
   phase?: ProgrammePhase,
-  _bankruptcy?: BankruptcyFiling,  // v7: ignored (no hard override)
+  _bankruptcy?: BankruptcyFiling,
 ): number {
   const { floor, ceiling } = getStateBounds(state);
   const phaseMult = getPhaseMultiplier(phase);
@@ -228,7 +248,7 @@ export function temporalWeight(filingDateStr?: string): number {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Legacy constants — preserved (referenced by v5 fallback in earnings.ts etc.)
+// Legacy constants
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const SOURCE_MULTIPLIERS: Record<string, number> = {
