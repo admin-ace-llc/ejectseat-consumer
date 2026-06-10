@@ -1,27 +1,30 @@
-// app/api/score/route.ts — EjectSeat Consumer v7
+// app/api/score/route.ts — EjectSeat Consumer v7.2
 //
-// ORCHESTRATOR with feature flag USE_COMPREHENSIVE_V2.
+// v7.2 ACCURACY FIXES:
 //
-// FLAG ON (default=true in env example):
-//   1. Validate company
-//   2. Fetch evidence bundle in parallel: SEC filings+facts, transcripts, news
-//   3. Single comprehensive Sonnet call → intelligence object
-//   4. Validate + finalise score (engine applies bands + signal_awaited penalty)
-//   5. Persist to Supabase, log chain-of-thought, return unified response
+//   1. NLP parse failures are no longer cached.
+//      When comprehensiveAnalysis throws NLP_PARSE_FAILURE the route returns
+//      a 503 (Service Unavailable) and skips all DB writes. The old behaviour
+//      persisted emptyIntelligence (CLEAR/0) as a real score for up to 72h.
 //
-// FLAG OFF:
-//   Full v5/v6.1 path runs — state classification + multi-signal + corroboration.
-//   Existing behaviour preserved for instant rollback.
+//   2. Cache response now populates signals from cached_intelligence.
+//      The v7.1 cache path hardcoded `signals: []` and `confirmedEvents: []`,
+//      meaning users never saw why a cached score was what it was. The cache
+//      path now reconstructs signals from the stored intelligence object so
+//      the UI evidence bundle is populated identically to a live response.
 //
-// RESPONSE SHAPE:
-//   Preserved at top level so frontend keeps rendering during flag flips.
-//   `intelligence` object added as new field; old clients ignore it; new UI
-//   lights up the intelligence cards when present.
+//   3. signalAwaited and signalOverdue separated.
+//      The quarterly calendar now returns overdue as a distinct state.
+//      Overdue is passed as a separate flag to validateAndFinaliseScore so
+//      the engine can skip the 0.85× penalty (overdue = stress indicator,
+//      not a confidence reducer). ACTIVE companies skip the penalty entirely.
 //
-// v7.1 CACHE CHANGE:
-//   Layoff risk does not change hour-to-hour. Extended TTLs dramatically
-//   improve response time for repeat searches without sacrificing accuracy.
-//   Anonymous: 24h → 72h | Registered: 6h → 24h
+//   4. fetchLegacyAuditSignals receives pre-fetched EDGAR data.
+//      Eliminates the duplicate EDGAR companyfacts + submissions round-trip
+//      that was happening on every live score request.
+//
+// CACHE TTLs (unchanged from v7.1):
+//   Anonymous: 72h | Registered: 24h
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -107,7 +110,6 @@ async function logUsage(userId: string | null, req: NextRequest, companyName: st
   });
 }
 
-// Map intelligence confirmed_events to the legacy ConfirmedEvent[] shape for UI
 function confirmedToLegacy(intel: ComprehensiveIntelligence): ConfirmedEvent[] {
   return intel.confirmed_events.map(e => ({
     description:   e.description,
@@ -120,7 +122,6 @@ function confirmedToLegacy(intel: ComprehensiveIntelligence): ConfirmedEvent[] {
   }));
 }
 
-// Build audit-strip signals from intelligence + legacy XBRL
 function buildAuditSignals(
   intel: ComprehensiveIntelligence,
   legacyAudit: Signal[],
@@ -188,7 +189,6 @@ function buildAuditSignals(
 
 function buildFallbackSummary(intel: ComprehensiveIntelligence, companyName: string): string {
   if (intel.summary && intel.summary.length > 20) return intel.summary;
-
   if (intel.bankruptcy.detected && intel.bankruptcy.chapter) {
     return `${companyName} has filed for Chapter ${intel.bankruptcy.chapter} — court-supervised process${intel.bankruptcy.filing_date ? ` on ${intel.bankruptcy.filing_date}` : ''}. This reflects confirmed public announcements.`;
   }
@@ -202,6 +202,15 @@ function buildFallbackSummary(intel: ComprehensiveIntelligence, companyName: str
   return `${companyName} shows ${intel.forward_signals.length} forward-looking signals in current filings and media. This is a predictive signal based on public filings — not a confirmed outcome.`;
 }
 
+// v7.2: build signals array from cached intelligence for cache-path responses.
+// The v7.1 cache path hardcoded signals:[] — users never saw why a cached
+// score was what it was. This reconstructs the display-ready signals from
+// the stored intelligence so the UI evidence bundle renders correctly.
+function signalsFromCachedIntelligence(intel: ComprehensiveIntelligence | null): Signal[] {
+  if (!intel) return [];
+  return buildAuditSignals(intel, []);
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN HANDLER
 // ─────────────────────────────────────────────────────────────────────────────
@@ -213,7 +222,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'companyName required' }, { status: 400 });
     }
 
-    // Auth
     let userId: string | null = null;
     let isRegistered = false;
     const authHeader = req.headers.get('Authorization');
@@ -223,9 +231,6 @@ export async function POST(req: NextRequest) {
     }
 
     // Cache check
-    // Layoff risk does not change hour-to-hour — extended TTLs cut cold-score
-    // frequency dramatically without sacrificing accuracy.
-    // Anonymous: 72h | Registered: 24h (was 24h / 6h)
     const { data: cachedCo } = await supabase
       .from('companies').select('*').ilike('name', companyName.trim()).single();
     const cacheAge = cachedCo?.cached_at
@@ -233,46 +238,60 @@ export async function POST(req: NextRequest) {
     const cacheTTL = isRegistered ? 24 : 72;
 
     if (cachedCo && cacheAge < cacheTTL && cachedCo.cached_score !== null) {
-      const scoreHistory = await getScoreHistory(cachedCo.id);
-      await logUsage(userId, req, companyName);
-      return NextResponse.json({
-        risk: {
-          score:        cachedCo.cached_score,
-          band:         cachedCo.cached_band,
-          confidence:   (cachedCo.cached_intelligence?.confidence as Confidence) || 'medium',
-          companyState: normaliseLegacyState(cachedCo.cached_state),
-          signals:      [],
-          confirmedEvents: [],
-          scoreHistory,
-          programme:    cachedCo.cached_programme || null,
-          headcount:    cachedCo.cached_headcount || null,
-          function_risk: cachedCo.cached_function_risk || null,
-          bankruptcy:   cachedCo.cached_bankruptcy || null,
-          large_employer_flag: cachedCo.cached_large_employer_flag || false,
-          intelligence: cachedCo.cached_intelligence || null,
-          disclaimer: {
-            productScope: 'US-listed public companies + FPIs. Cached response.',
-            signalNature: 'Predictive signal — not confirmed outcome.',
-            dataSource:   'SEC EDGAR + Claude Sonnet + Tier A/B media.',
-            lastUpdated:  cachedCo.cached_at,
-            companyEligibility: {
-              isUSListed: cachedCo.is_us_listed,
-              isPublicCompany: cachedCo.is_public,
-              secFilingFound: cachedCo.sec_filing_found,
+      // v7.2: guard against serving a cached parse failure (requires_review +
+      // no forward_signals + score=0 combination indicates bad cache).
+      const cachedIntel: ComprehensiveIntelligence | null = cachedCo.cached_intelligence || null;
+      const isBadCache = cachedIntel?.requires_review &&
+        cachedIntel?.validator_notes?.some((n: string) => n.includes('JSON parse failure'));
+      if (isBadCache) {
+        // Fall through to live pipeline — don't serve the bad result
+        console.warn(`[score/route] Bad cached result detected for ${companyName} — forcing re-analysis`);
+      } else {
+        const scoreHistory = await getScoreHistory(cachedCo.id);
+        await logUsage(userId, req, companyName);
+
+        // v7.2: reconstruct signals from cached intelligence so the UI bundle
+        // is populated the same way as a live response.
+        const cachedSignals = signalsFromCachedIntelligence(cachedIntel);
+        const cachedConfirmed = cachedIntel ? confirmedToLegacy(cachedIntel) : [];
+
+        return NextResponse.json({
+          risk: {
+            score:        cachedCo.cached_score,
+            band:         cachedCo.cached_band,
+            confidence:   (cachedIntel?.confidence as Confidence) || 'medium',
+            companyState: normaliseLegacyState(cachedCo.cached_state),
+            signals:      cachedSignals,       // v7.2: was []
+            confirmedEvents: cachedConfirmed,  // v7.2: was []
+            scoreHistory,
+            programme:    cachedCo.cached_programme || null,
+            headcount:    cachedCo.cached_headcount || null,
+            function_risk: cachedCo.cached_function_risk || null,
+            bankruptcy:   cachedCo.cached_bankruptcy || null,
+            large_employer_flag: cachedCo.cached_large_employer_flag || false,
+            intelligence: cachedIntel,
+            disclaimer: {
+              productScope: 'US-listed public companies + FPIs. Cached response.',
+              signalNature: 'Predictive signal — not confirmed outcome.',
+              dataSource:   'SEC EDGAR + Claude Sonnet + Tier A/B media.',
+              lastUpdated:  cachedCo.cached_at,
+              companyEligibility: {
+                isUSListed: cachedCo.is_us_listed,
+                isPublicCompany: cachedCo.is_public,
+                secFilingFound: cachedCo.sec_filing_found,
+              },
             },
-          },
-          pipelineVersion: cachedCo.cached_pipeline_version || 'v7',
-        } as RiskScore,
-        company: { name: cachedCo.legal_name || companyName, ticker: cachedCo.ticker, cik: cachedCo.cik },
-        signalsGated: false,
-        fromCache: true,
-      });
+            pipelineVersion: cachedCo.cached_pipeline_version || 'v7',
+          } as RiskScore,
+          company: { name: cachedCo.legal_name || companyName, ticker: cachedCo.ticker, cik: cachedCo.cik },
+          signalsGated: false,
+          fromCache: true,
+        });
+      }
     }
 
-    // Validate company
     const eligibility = await validateCompany(companyName, ticker);
 
-    // Early return for indexes
     if (eligibility.ineligibilityReason?.includes('market index')) {
       return NextResponse.json({
         risk: {
@@ -294,7 +313,6 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Handle private / unknown companies — news-only path
     if (!eligibility.secFilingFound) {
       return NextResponse.json({
         risk: {
@@ -316,12 +334,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ─── v7 PIPELINE (flag on) ─────────────────────────────────────────────
     if (useV2()) {
       return await runV7Pipeline(req, companyName, ticker, eligibility, userId, isRegistered);
     }
 
-    // ─── v5 FALLBACK (flag off) ────────────────────────────────────────────
     return await runV5Pipeline(req, companyName, ticker, eligibility, userId, isRegistered);
 
   } catch (err: any) {
@@ -342,14 +358,20 @@ async function runV7Pipeline(
   userId: string | null,
   isRegistered: boolean,
 ) {
-  const [bundlePart, transcripts, news, legacyAudit, quarterlyStatus] = await Promise.all([
+  const [bundlePart, transcripts, news, quarterlyStatus] = await Promise.all([
     fetchEvidenceBundle(eligibility.cik!, companyName, 365),
     fetchRecentTranscripts(ticker || null, 2),
     fetchRecentNews(companyName, 30),
-    fetchLegacyAuditSignals(eligibility.cik!),
     import('@/lib/signals/quarterly-calendar').then(m => m.getQuarterlySignalStatus(eligibility.cik!))
       .catch(() => null),
   ]);
+
+  // v7.2: pass pre-fetched facts + submissions to avoid second EDGAR round-trip
+  const legacyAudit = await fetchLegacyAuditSignals(
+    eligibility.cik!,
+    bundlePart._rawFacts,
+    bundlePart._rawSubmissions,
+  );
 
   const bundle: EvidenceBundle = {
     company:          eligibility.legalName || companyName,
@@ -363,13 +385,38 @@ async function runV7Pipeline(
     generatedAt:      new Date().toISOString(),
   };
 
-  const intel = await comprehensiveAnalysis(bundle);
+  // v7.2: separate awaited vs overdue — overdue is a stress indicator,
+  // not a confidence reducer. ACTIVE companies skip the penalty regardless.
+  const filingStatus = quarterlyStatus?.filingStatus;
+  const signalAwaited = filingStatus === 'awaited';
+  const signalOverdue = filingStatus === 'overdue';
 
-  const signalAwaited = quarterlyStatus?.filingStatus === 'awaited' || quarterlyStatus?.filingStatus === 'overdue';
+  let intel: ComprehensiveIntelligence;
+  try {
+    intel = await comprehensiveAnalysis(bundle);
+  } catch (err: any) {
+    if (err?.message === 'NLP_PARSE_FAILURE') {
+      // v7.2: do NOT cache a parse failure. Return 503 so the client can retry.
+      // The old behaviour persisted CLEAR/0 and cached it for up to 72 hours.
+      console.error(`[score/route] NLP_PARSE_FAILURE for ${companyName} — returning 503, skipping cache`);
+      return NextResponse.json(
+        {
+          error: 'Analysis temporarily unavailable — NLP parse error. Please retry.',
+          retryable: true,
+          company: { name: eligibility.legalName || companyName, ticker, cik: eligibility.cik },
+        },
+        { status: 503 },
+      );
+    }
+    throw err;
+  }
+
+  // v7.2: pass signalOverdue separately; ACTIVE companies skip penalty in engine
   const finalised = validateAndFinaliseScore(
     intel,
     signalAwaited,
     eligibility.isUSListed && eligibility.secFilingFound,
+    signalOverdue,
   );
 
   const auditSignals = buildAuditSignals(intel, legacyAudit);
@@ -391,7 +438,7 @@ async function runV7Pipeline(
       quarter_label:    quarterlyStatus?.currentQuarterLabel || null,
       key_signal:       topSignal?.slice(0, 80) || null,
       signals:          auditSignals.slice(0, 5),
-      disclaimer:       { signalNature: 'Predictive', signalAwaited },
+      disclaimer:       { signalNature: 'Predictive', signalAwaited, signalOverdue },
       quarterly_status: quarterlyStatus || null,
       chain_of_thought: intel.reasoning_chain,
       programme_name:          intel.programme.name,
@@ -409,7 +456,7 @@ async function runV7Pipeline(
       waves_confirmed:         intel.waves.waves_confirmed,
       trajectory:              intel.trajectory,
       requires_review:         intel.requires_review,
-      pipeline_version:        'v7',
+      pipeline_version:        'v7.2',
       scored_at:               new Date().toISOString(),
     });
 
@@ -420,7 +467,7 @@ async function runV7Pipeline(
       cached_bankruptcy:          intel.bankruptcy,
       cached_large_employer_flag: intel.large_employer_flag,
       cached_intelligence:        intel,
-      cached_pipeline_version:    'v7',
+      cached_pipeline_version:    'v7.2',
     }).eq('id', companyId);
   }
 
@@ -441,14 +488,16 @@ async function runV7Pipeline(
       state: finalised.state, isRegistered,
       programmeName: intel.programme.name,
       bankruptcyDetected: intel.bankruptcy.detected,
-      pipelineVersion: 'v7',
+      pipelineVersion: 'v7.2',
       requiresReview: intel.requires_review,
+      signalAwaited,
+      signalOverdue,
     },
   });
 
   const summary = buildFallbackSummary(intel, eligibility.legalName || companyName);
 
-  const response: { risk: RiskScore; company: any; signalsGated: boolean } = {
+  return NextResponse.json({
     risk: {
       score:           finalised.score,
       band:            finalised.band,
@@ -478,17 +527,11 @@ async function runV7Pipeline(
         lastUpdated:  new Date().toISOString(),
         companyEligibility: eligibility,
       },
-      pipelineVersion: 'v7',
-    },
-    company: {
-      name:   eligibility.legalName || companyName,
-      ticker,
-      cik:    eligibility.cik,
-    },
+      pipelineVersion: 'v7.2',
+    } as RiskScore,
+    company: { name: eligibility.legalName || companyName, ticker, cik: eligibility.cik },
     signalsGated: false,
-  };
-
-  return NextResponse.json(response);
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -515,7 +558,7 @@ async function runV5Pipeline(
   const stateResult = await classifyCompanyState(companyName, filingText, headlines);
   const v7State = normaliseLegacyState(stateResult.state);
 
-  const signalAwaited = quarterlyStatus?.filingStatus === 'awaited' || quarterlyStatus?.filingStatus === 'overdue';
+  const signalAwaited = quarterlyStatus?.filingStatus === 'awaited';
   const { floor, ceiling } = getStateBounds(v7State);
   const score = signalAwaited ? Math.round(floor * 0.85) : floor;
   const band = getBand(score);
