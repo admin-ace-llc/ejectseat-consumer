@@ -1,63 +1,49 @@
-// lib/signals/nlp-analyzer.ts — EjectSeat Consumer v7.4
+// lib/signals/nlp-analyzer.ts — EjectSeat Consumer v7.2
 //
-// ARCHITECTURE:
-//   v5:  5+ Haiku calls (prefilter / classify / verify / analyse / summarise)
-//   v7:  ONE comprehensive Sonnet call per company
-//   v7.2: Predictive signal types + predictive_horizon field
-//   v7.3: COMPREHENSIVE LAYOFF DETECTION — catches all layoff types regardless of
-//         whether they trigger a formal SEC filing.
-//   v7.4: XBRL ESCALATION FIX — root cause of Salesforce/META scoring 0/CLEAR
-//         despite visible restructuring charges in XBRL data.
-//         Changes:
-//           + detectXBRLRestructuringCharges() helper — parses companyFacts directly
-//           + XBRL escalation block in runPostValidators():
-//               $1M–$9M  → minimum WATCH/28
-//               $10M–$49M → minimum WATCH/40
-//               $50M+     → minimum WATCH/50 + severity-2 forward signal injected
-//           + System prompt hardened: explicit XBRL rule added to EVIDENCE RULES
-//             and CLEAR definition — Claude must never return CLEAR when XBRL shows
-//             restructuring charges > $0 in the last 2 years.
-//         These changes act as a deterministic safety net AFTER Claude's analysis —
-//         even if Claude misses or underweights XBRL charges, post-validators enforce
-//         the correct minimum state.
+// v7.2 ACCURACY FIXES:
+//   1. max_tokens raised 1_500 → 3_500.
+//      At 1_500 the JSON was truncating for any company with real signals.
+//      safeParseJSON returned null, emptyIntelligence (CLEAR/0) was cached
+//      silently. 3_500 gives comfortable headroom for the full schema including
+//      a bounded reasoning_chain.
 //
-//   v7.3 changes (preserved):
+//   2. reasoning_chain capped at 3 sentences in the prompt schema.
+//      Previously open-ended, it was the largest variable-length field and
+//      consumed 600-1_000 tokens alone.
 //
-//   SIGNAL COVERAGE EXPANSION:
-//     + performance_managed_layoffs — PIPs at scale, forced ranking, "managing out underperformers"
-//     + voluntary_separation_program — VSPs, early-retirement buyouts, "voluntary exit incentives"
-//     + quiet_layoffs — role eliminations without announcement, positions not backfilled
-//     + rto_attrition_strategy — RTO mandates designed to drive attrition rather than improve attendance
-//     + ai_displacement — explicit AI/automation replacing identified role categories
-//     + outsourcing_offshoring — job migration to lower-cost geographies
-//     + contractor_workforce_cuts — major contractor/vendor reductions preceding employee cuts
+//   3. Parse failure no longer cached as CLEAR/0.
+//      comprehensiveAnalysis now throws on JSON parse failure so the route
+//      handler can catch it, skip the DB write, and return a 503 that the
+//      client can retry. The old behaviour silently persisted bad data for
+//      up to 72 hours.
 //
-//   STATE DEFINITION CHANGES:
-//     ACTIVE now earned by: 8-K Item 2.05 OR 2+ Tier A media confirming cuts OR CEO
-//       explicit announcement on earnings call, all within 90 days. Formal SEC filing
-//       is NO LONGER required.
-//     LIKELY lowered: single Tier A confirmation + any corroborating signal qualifies.
-//     WATCH: any credible single-source indication of cuts qualifies.
+//   4. System prompt: WATCH trigger for restructuring charges.
+//      A restructuring charge in any 10-Q/10-K now earns at minimum WATCH
+//      25-35 regardless of whether it is workforce-related. Previously the
+//      model could return CLEAR even with a visible restructuring charge.
 //
-//   CONTEXT ISOLATION RELAXED:
-//     Model may use general industry patterns and known layoff mechanisms as
-//     interpretive framework — but MUST NOT assert specific facts about THIS company
-//     that are not in the evidence bundle.
+//   5. System prompt: clearer ACTIVE vs WATCH/LIKELY boundary.
+//      ACTIVE requires an explicit workforce confirmation (8-K Item 2.05,
+//      named programme with headcount target, WARN Act). A restructuring
+//      charge alone in a quarterly filing does NOT qualify.
 //
-//   MEDIA ESCALATION RULE (post-validator):
-//     If bundle.news contains 2+ Tier A items referencing workforce reduction for
-//     this company, minimum state is enforced as ACTIVE.
-//     If bundle.news contains 1 Tier A OR 2+ Tier B items, minimum state is WATCH.
+//   6. System prompt: scoring guidance anchors added.
+//      Model had no numeric anchor points; guidance now states expected score
+//      ranges for common evidence patterns, reducing variance.
 //
-//   SCORE FLOOR RULE:
-//     Any company with ≥1 forward signal cannot score below 8 (prevents 0/CLEAR
-//     even when evidence is present).
-//     WATCH state minimum floor raised from 25 to 28.
+// PRIOR VERSION NOTES (preserved for context):
+//   v7.1: max_tokens 4_000→1_500 (too aggressive — reverted to 3_500)
+//   v7.1: transcript budget 8_000→5_000 chars per transcript (preserved)
+//   v7.1: XBRL facts compact 6_000→4_000 chars (preserved)
 //
-//   PROMPT:
-//     max_tokens raised 2_000 → 2_500 to accommodate expanded signal taxonomy.
-//     System prompt substantially rewritten — new layoff typology, relaxed isolation,
-//     lower evidence bar for ACTIVE.
+// EXPORTS:
+//   - comprehensiveAnalysis(bundle) → ComprehensiveIntelligence  (v7 primary)
+//   - classifyCompanyState(...)     → preserved for v5 fallback
+//   - verifyXBRLSignal(...)         → preserved for v5 fallback
+//   - analyzeText(...)              → preserved for v5 fallback
+//   - generateSummary(...)          → preserved for v5 fallback
+//   - prefilterFilingText(...)      → preserved for v5 fallback
+//   - SEVERITY_TO_POINTS            → preserved constant
 
 import Anthropic from '@anthropic-ai/sdk';
 import type {
@@ -65,7 +51,7 @@ import type {
   IntelligenceConfirmedEvent, IntelligenceForwardSignal,
   ProgrammeIntelligence, HeadcountEstimate, FunctionRiskMap,
   BankruptcyFiling, WavesIntelligence, ConfidenceTier,
-  TrajectoryDirection, ConfirmedEvent, PredictiveHorizon,
+  TrajectoryDirection, ConfirmedEvent,
 } from '@/types';
 import { fmtUSD, fmtCount } from '@/lib/format';
 import { compactTranscriptForPrompt } from '@/lib/signals/transcripts';
@@ -81,30 +67,10 @@ export const SEVERITY_TO_POINTS: Record<number, number> = { 1: 18, 2: 14, 3: 9, 
 
 const STATE_BANDS: Record<CompanyState, { floor: number; ceiling: number }> = {
   CLEAR:  { floor: 0,  ceiling: 35 },
-  WATCH:  { floor: 28, ceiling: 64 },   // v7.3: floor raised 25→28
+  WATCH:  { floor: 25, ceiling: 64 },
   LIKELY: { floor: 45, ceiling: 78 },
   ACTIVE: { floor: 60, ceiling: 90 },
 };
-
-// v7.3: Full signal type registry — includes all new predictive + behavioural types
-const VALID_SIGNAL_TYPES = [
-  // Original v7 types
-  'activist_pressure', 'sustained_losses', 'ceo_language', 'cost_pressure',
-  'headcount_drop', 'impairment', 'nt_filing', 'strategic_distress',
-  'profitability_pivot', 'restructuring_charge',
-  // v7.2 predictive indicators
-  'hiring_freeze', 'executive_exodus', 'office_closure',
-  'product_discontinuation', 'debt_covenant_risk',
-  // v7.3 comprehensive layoff types — catch cuts that never file 8-K Item 2.05
-  'performance_managed_layoffs',   // PIPs at scale, forced ranking, "managing out"
-  'voluntary_separation_program',  // VSPs, buyouts, early-retirement programs
-  'quiet_layoffs',                 // role eliminations without announcement
-  'rto_attrition_strategy',        // RTO mandates as headcount reduction mechanism
-  'ai_displacement',               // explicit AI/automation replacing role categories
-  'outsourcing_offshoring',        // job migration to lower-cost geographies
-  'contractor_workforce_cuts',     // contractor/vendor cuts preceding employee cuts
-  'other',
-];
 
 export type LegacyCompanyState = 'CLEAR' | 'WATCHING' | 'ACTIVE' | 'ACTIVE_MULTI_YEAR' | 'CONTINUATION_RISK';
 
@@ -180,10 +146,6 @@ function compactCompanyFacts(facts: any): string {
     'ImpairmentOfIntangibleAssetsFinitelived',
     'RestructuringProvision',
     'EmployeeBenefitsExpense',
-    // v7.2: lease and debt signals
-    'OperatingLeaseLiability',
-    'LongTermDebt',
-    'DebtInstrumentCarryingAmount',
   ]);
 
   for (const taxonomy of ['us-gaap', 'ifrs-full', 'dei']) {
@@ -215,7 +177,9 @@ function compactCompanyFacts(facts: any): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// v7.3 PRIMARY — comprehensiveAnalysis
+// v7 PRIMARY — comprehensiveAnalysis
+// v7.2: throws NLP_PARSE_FAILURE instead of returning emptyIntelligence on
+//        JSON parse errors — prevents bad results being cached.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function comprehensiveAnalysis(bundle: EvidenceBundle): Promise<ComprehensiveIntelligence> {
@@ -239,6 +203,7 @@ export async function comprehensiveAnalysis(bundle: EvidenceBundle): Promise<Com
     `── FILING: ${f.form} | Filed ${f.filingDate} | accession=${f.accession} | ${f.url} ──\n${f.text}`
   ).join('\n\n') || '(no recent SEC filings retrieved)';
 
+  // Transcript budget: 5_000 chars per transcript (v7.1 preserved)
   const transcriptsBlock = bundle.transcripts.length > 0
     ? bundle.transcripts.map(t => compactTranscriptForPrompt(t, 5_000)).join('\n\n')
     : '(no earnings call transcripts available for this ticker)';
@@ -251,175 +216,56 @@ export async function comprehensiveAnalysis(bundle: EvidenceBundle): Promise<Com
 
   const todayISO = new Date().toISOString().slice(0, 10);
 
-  // ── SYSTEM PROMPT ──────────────────────────────────────────────────────────
-  const systemPrompt = `You are a senior financial intelligence analyst at a layoff-risk prediction company. Your job is to detect workforce reductions of ALL types — not just those that trigger formal SEC filings. You read SEC filings, earnings transcripts, and Tier A/B media and produce structured risk intelligence.
+  // v7.2: system prompt hardened with explicit WATCH trigger, ACTIVE definition,
+  //        and scoring anchors to reduce variance across companies.
+  const systemPrompt = `You are a senior financial intelligence analyst at a layoff-risk prediction company. You read SEC filings, earnings call transcripts, and Tier A/B media coverage for US-listed public companies and Foreign Private Issuers, and produce structured intelligence about workforce reduction risk.
 
-═══════════════════════════════════════
-SCOPE: WHAT COUNTS AS A LAYOFF
-═══════════════════════════════════════
-You must detect ALL of the following — they are all layoffs, regardless of how the company labels them:
+CRITICAL RULES — violations cause downstream validation failures:
 
-1. FORMAL RESTRUCTURING — disclosed in 8-K Item 2.05 or named programme in 10-K/10-Q. Easiest to detect.
-2. PERFORMANCE-MANAGED LAYOFFS — companies firing the bottom X% of performers through PIPs or forced ranking ("managing out underperformers", "raising the performance bar", "holding teams to a higher standard"). These NEVER appear in 8-K filings. Detect via: earnings call language, Bloomberg/Reuters/FT reporting, LinkedIn or tech press coverage.
-3. VOLUNTARY SEPARATION PROGRAMS (VSPs) — buyouts offered to employees to leave voluntarily. Often framed as "voluntary" but are headcount reduction tools. Detect via any source.
-4. QUIET LAYOFFS — individual role eliminations without announcement. No single filing, but patterns emerge in headcount YoY data, media reporting, or executive commentary about "organisational efficiency".
-5. RTO-AS-ATTRITION — when return-to-office mandates are deliberately set at levels known to drive voluntary departures among employees who relocated during COVID. Detect via: strong RTO policy + no hiring surge + executive commentary about "right-sizing".
-6. AI/AUTOMATION DISPLACEMENT — explicit CEO or product announcements about AI tools replacing categories of workers (customer service, coding, legal review, content, etc.). Detect via earnings calls and tech press.
-7. OUTSOURCING / OFFSHORING — moving roles to lower-cost geographies. Detect via earnings commentary on "labour cost optimisation", vendor contract announcements, facility closures in high-cost markets.
-8. CONTRACTOR WORKFORCE CUTS — large reductions in contract workers often precede or accompany employee cuts. Detect via media and earnings calls.
-9. BENEFIT/COMP REDUCTIONS — while not a layoff, aggressive benefit cuts alongside other signals are a strong predictor.
+1. CONTEXT ISOLATION. Base your analysis ONLY on the evidence bundle provided below. Do not reference any knowledge about this company from your training data. If a fact is not in the evidence bundle, it does not exist for this analysis. You may not invent dates, programme names, headcount numbers, severance amounts, CEO statements, or news coverage.
 
-═══════════════════════════════════════
-EVIDENCE RULES
-═══════════════════════════════════════
+2. EVIDENCE BINDING. Every factual claim (confirmed events, forward signals, programme details, headcount, function risk, bankruptcy) MUST include:
+   - source_ref: the accession number from filings, OR the URL from news/transcripts, OR the exact source tier name — must match something in the bundle
+   - source_quote: a direct quote from that source, minimum 10 characters, maximum 200 characters
+   If you cannot produce both, you must omit the claim.
 
-CLAIM BINDING: Every factual claim MUST include:
-  - source_ref: accession number from filings, OR URL from news/transcripts, OR tier name (tier_a / tier_b / transcript) — must match something in the bundle
-  - source_quote: a direct quote from that source, 10–200 characters
-  If you cannot produce both, omit the claim.
+3. CONFIDENCE FLOORS.
+   - high confidence: requires at least 3 independent corroborating sources in the bundle
+   - medium confidence: requires at least 2 independent sources
+   - low confidence: 1 source or ambiguous evidence
+   These are HARD floors. Do not override.
 
-XBRL RULE — CRITICAL: The XBRL FINANCIAL FACTS section below contains data directly from SEC filings. If ANY of the following line items show a value > $0 in the last 2 years, that is a CONFIRMED financial disclosure of restructuring activity:
-  - RestructuringCharges / RestructuringCostsAndAssetImpairmentCharges
-  - SeveranceCosts1
-  - BusinessExitCosts1
-  - RestructuringProvision
+4. NO INVENTION. If unsure, omit. If evidence is thin, return low confidence and insufficient_signal reasoning. Do not extrapolate beyond what is directly stated. For inferences (e.g. headcount math from severance dollars) set inferred=true and state the basis.
 
-When these appear in XBRL facts:
-  - CLEAR is NEVER appropriate, regardless of what media or transcripts say
-  - Minimum state is WATCH
-  - The source_ref for the signal is "xbrl" and source_quote should describe the charge (e.g. "RestructuringCharges: $36.0M, FY2025 Q3")
-  - A $10M+ charge warrants score ≥ 40; a $50M+ charge warrants score ≥ 50
-  - Do NOT require corroborating media to act on XBRL data — the filing IS the primary source
+5. NUMBER FORMATTING. All dollar amounts in output must be in business shorthand: $4.7M, $1.2B, $847K. Headcounts use comma grouping: 1,000 / 3,400. Never write out zeros.
 
-INDUSTRY PATTERNS: You MAY use your general knowledge of how different layoff types manifest (e.g. that PIPs-at-scale are typical of large tech companies, that VSPs often precede formal restructuring) as an interpretive framework. However, you MUST NOT assert specific facts about this company (dates, headcount numbers, programme names, CEO statements) unless they appear in the evidence bundle.
+6. HEADLINE STATE. Risk level (CLEAR / WATCH / LIKELY / ACTIVE) is the headline in the UI. Earn the state from the evidence.
 
-NUMBER FORMATTING: Dollar amounts in business shorthand ($4.7M, $1.2B). Headcounts with comma grouping: 1,000 / 34,000.
+STATE DEFINITIONS:
+- CLEAR  (score 0–35):  No material signals. No restructuring charges. No forward indicators of cost reduction or workforce pressure.
+- WATCH  (score 25–64): Forward indicators present. IMPORTANT: ANY restructuring charge in a 10-Q/10-K, ANY cost-reduction language from the CEO, ANY sustained net losses, or ANY activist pressure AUTOMATICALLY qualifies for at minimum WATCH score 25-35. Do NOT return CLEAR if a restructuring charge exists in the XBRL data or filing text, even if the charge appears non-workforce (real estate exits, operational restructuring) — all restructuring signals financial stress.
+- LIKELY (score 45–78): Multiple independent corroborating signals across filings, calls, and news, OR a confirmed small cut with additional pressure, OR restructuring charge + CEO cost language + news coverage together.
+- ACTIVE (score 60–90): Confirmed layoff event evidenced by one or more of: (a) 8-K Item 2.05 or 2.06 in the filing bundle, (b) a named multi-year transformation programme currently mid-cycle with explicit headcount targets, (c) court-filed bankruptcy, OR (d) news coverage with confirmed headcount figures AND corroborating SEC language. A restructuring charge in a 10-Q alone, without explicit workforce announcement, does NOT qualify for ACTIVE — it qualifies for WATCH or LIKELY.
 
-═══════════════════════════════════════
-STATE DEFINITIONS — v7.3 EXPANDED
-═══════════════════════════════════════
+90-DAY RECENCY RULE: ACTIVE is appropriate when the confirmed event is within 90 days of today AND/OR there are explicit escalation signals. Older events with no fresh signals should be LIKELY or WATCH.
 
-ACTIVE (score 60–90):
-ANY of the following within the last 90 days:
-  (a) Formal 8-K Item 2.05 / 6-K workforce reduction filing
-  (b) TWO OR MORE Tier A sources (Reuters, Bloomberg, FT, WSJ, NYT) independently confirming headcount cuts
-  (c) CEO or CFO EXPLICITLY confirming cuts on an earnings call (e.g. "we are reducing headcount by X%", "we have eliminated X roles")
-  (d) A named multi-year transformation programme currently mid-cycle
-  (e) Court-filed bankruptcy (any chapter)
-  (f) VSP offered or confirmed via credible source
-A formal SEC filing is NOT required for ACTIVE. Tier A media confirmation alone is sufficient.
+SCORING ANCHORS — use these as calibration:
+- Score 0–15:   Truly no signals. Zero restructuring charges. Positive headcount trend. No news.
+- Score 16–30:  Minor signal — single restructuring charge, cost-efficiency language only, no confirmed event.
+- Score 31–45:  WATCH territory — restructuring charge + CEO cost language, OR multiple quarters of losses, OR news coverage without SEC confirmation.
+- Score 46–60:  LIKELY territory — multiple corroborating signals, OR small confirmed cut with ongoing programme language.
+- Score 61–75:  ACTIVE — confirmed event within 90 days, single wave, programme in early/mid phase.
+- Score 76–90:  ACTIVE — multi-wave, large-scale, ongoing, or bankruptcy.
 
-LIKELY (score 45–78):
-ANY of the following:
-  (a) ONE Tier A source confirming cuts + at least one corroborating signal (financial stress, hiring freeze, exec departure)
-  (b) Multiple independent signals (3+) converging toward restructuring without a single confirmation
-  (c) Explicit executive language about "right-sizing", "optimising headcount", "leaner organisation" on earnings call
-  (d) Confirmed AI displacement affecting identified roles at material scale
-  (e) RTO mandate in context of significant headcount growth and financial pressure (strong attrition intent signal)
-  (f) Performance management programme disclosed in any source + financial stress present
+SEVERITY TIERS for forward_signals:
+- 1: Direct workforce reduction language ("we will reduce headcount by X%")
+- 2: Restructuring language ("workforce optimization", "rightsizing", named programme)
+- 3: Cost/efficiency focus ("cost discipline", "path to profitability")
+- 4: Cautious hiring ("thoughtful about hiring", "pausing headcount growth")
 
-WATCH (score 28–64):
-ANY of the following:
-  (a) Any credible source (Tier A, B, or C) reporting cuts or planning for cuts
-  (b) Strong forward indicators: hiring freeze + financial stress, OR executive departures + profitability pressure
-  (c) Contractor workforce cuts reported without employee confirmation yet
-  (d) AI displacement language on earnings call without specific role count confirmed
-  (e) Cost-cutting language from CEO or CFO that implies headcount as a lever
+Today's date: ${todayISO}. Use this to assess recency.`;
 
-CLEAR (score 0–35):
-  No material layoff signals across any source type. Company may be growing headcount or in stable plateau. No forward indicators of material restructuring.
-  HARD CONSTRAINT: CLEAR is NEVER appropriate if XBRL shows RestructuringCharges, SeveranceCosts1, or BusinessExitCosts1 > $0 in the last 2 years. A restructuring charge in an SEC filing is a legally disclosed financial fact — it must be scored as minimum WATCH.
-
-═══════════════════════════════════════
-90-DAY RECENCY RULE
-═══════════════════════════════════════
-ACTIVE is appropriate when the event is within 90 days AND/OR there are explicit escalation signals. Events older than 90 days with no fresh signals or escalation should be LIKELY or WATCH. EXCEPTION: named multi-year programmes remain ACTIVE for their declared duration.
-
-═══════════════════════════════════════
-SEVERITY TIERS for forward_signals
-═══════════════════════════════════════
-1 — Direct workforce reduction language: "we will reduce headcount by X%", "we are eliminating X roles", CEO confirms cuts
-2 — Restructuring language: "workforce optimisation", "rightsizing", named programme, VSP offered
-3 — Cost/efficiency focus: "path to profitability", "operating leverage", "cost discipline", AI replacing roles
-4 — Cautious/freeze: hiring freeze, "thoughtful about headcount", "pausing growth"
-
-═══════════════════════════════════════
-SIGNAL TYPES — FULL TAXONOMY
-═══════════════════════════════════════
-Original:
-  activist_pressure, sustained_losses, ceo_language, cost_pressure, headcount_drop,
-  impairment, nt_filing, strategic_distress, profitability_pivot, restructuring_charge
-
-Predictive (v7.2):
-  hiring_freeze — explicit pause on new hires (leading indicator ~60–90 days pre-announcement)
-  executive_exodus — clustered CFO/CTO/CRO/CPO/VP departures in a 3-month window
-  office_closure — lease terminations, facility consolidations
-  product_discontinuation — sunset of product lines / market exits
-  debt_covenant_risk — covenant waiver requests, NT filing patterns
-
-Comprehensive (v7.3 — catches all layoff types):
-  performance_managed_layoffs — PIPs at scale, forced ranking cuts, "managing out underperformers".
-    These are LAYOFFS. Detect from media, earnings call language, employee/LinkedIn reports in Tier B/C.
-    Phrase patterns: "raising the performance bar", "managing out", "bottom X% of performers",
-    "holding our teams to a higher standard", "increasing performance expectations".
-
-  voluntary_separation_program — VSPs, early-retirement buyouts, "voluntary exit incentives".
-    These reduce headcount regardless of "voluntary" framing. Detect from any source.
-
-  quiet_layoffs — role eliminations without formal announcement. Detect from:
-    headcount YoY decline in XBRL, Tier B/C media patterns, executive org-change language.
-
-  rto_attrition_strategy — RTO mandates designed to drive attrition.
-    Detect when: (a) strong RTO policy announced AND (b) financial pressure or hiring freeze present
-    AND (c) no offsetting hiring surge. Severity depends on policy strictness and context.
-
-  ai_displacement — AI tools explicitly replacing identified worker categories.
-    Detect from: earnings call commentary on AI replacing roles, product announcements,
-    executive statements about "AI doing the work of X employees".
-    Phrases: "AI agents replacing", "eliminating the need for", "automating away",
-    "AI doing the work previously done by".
-
-  outsourcing_offshoring — job migration to lower-cost geographies.
-    Detect from: earnings cost commentary, facility closures in high-cost markets,
-    new offshore delivery centre announcements alongside domestic headcount decline.
-
-  contractor_workforce_cuts — material contractor/vendor reductions.
-    These often precede employee cuts by 1–2 quarters. Detect from media and earnings calls.
-
-  other — anything not fitting above categories
-
-═══════════════════════════════════════
-PREDICTIVE HORIZON
-═══════════════════════════════════════
-Based on signal combination, estimate WHEN risk most likely materialises as a formal announcement:
-  "30d" — Active programme in motion OR imminent announcement signalled
-  "60d" — Hiring freeze + financial stress (typical pre-announcement window)
-  "90d" — Multiple WATCH signals converging (standard restructuring planning cycle)
-  "180d+" — Early-stage indicators only, or stable WATCH with no acceleration
-  null — CLEAR state or insufficient data
-
-Today's date: ${todayISO}. Use this to assess recency and compute horizon.
-
-═══════════════════════════════════════
-SCORE CALIBRATION GUIDANCE
-═══════════════════════════════════════
-Avoid score 0 for any company where signals exist. Use this rough guide:
-  CLEAR  0–10: absolutely no signals, growing headcount
-  CLEAR 11–25: minor cost commentary only, no structural signals
-  CLEAR 26–35: some efficiency language but no credible layoff indication
-  WATCH  28–40: one soft signal or unconfirmed media report
-  WATCH  41–55: multiple soft signals or single credible media report
-  WATCH  56–64: strong multi-signal convergence just below LIKELY threshold
-  LIKELY 45–60: confirmed-leaning with partial evidence
-  LIKELY 61–78: high confidence multiple signals, near-certain short-term
-  ACTIVE 60–72: confirmed via media or earnings (no 8-K)
-  ACTIVE 73–85: confirmed via 8-K Item 2.05 or named programme mid-cycle
-  ACTIVE 86–90: confirmed multi-wave, multi-year programme at scale`;
-
-  // ── USER PROMPT ────────────────────────────────────────────────────────────
   const userPrompt = `Analyse the evidence bundle for ${bundle.company}${bundle.ticker ? ` (${bundle.ticker})` : ''}.
-
-Apply the FULL v7.3 signal taxonomy — detect ALL layoff types, not just formal SEC-filed restructurings. Performance-managed layoffs, VSPs, quiet layoffs, RTO attrition, AI displacement, and offshoring are all in scope.
 
 ═══════════════════════════════════════════════════════════════
 HEADCOUNT HISTORY
@@ -442,7 +288,7 @@ EARNINGS CALL TRANSCRIPTS (prepared remarks + Q&A where available)
 ${transcriptsBlock}
 
 ═══════════════════════════════════════════════════════════════
-TIER A/B/C MEDIA (last 30–90 days)
+TIER A/B/C MEDIA (last 30 days)
 ═══════════════════════════════════════════════════════════════
 ${newsBlock}
 
@@ -452,27 +298,27 @@ OUTPUT — return ONLY this JSON object, nothing else.
 
 {
   "state": "CLEAR" | "WATCH" | "LIKELY" | "ACTIVE",
-  "score": integer within state band [CLEAR 0-35, WATCH 28-64, LIKELY 45-78, ACTIVE 60-90],
+  "score": integer within state band [CLEAR 0-35, WATCH 25-64, LIKELY 45-78, ACTIVE 60-90],
   "confidence": "high" | "medium" | "low",
   "low_confidence_reason": string | null,
 
   "confirmed_events": [
     {
-      "description": "what was confirmed, in plain English — include layoff type (e.g. 'performance-managed', 'VSP', 'formal restructuring')",
+      "description": "what was announced, in plain English",
       "date": "YYYY-MM-DD" or null,
-      "source_ref": "accession number, URL, or tier name (tier_a/tier_b/transcript) from bundle",
+      "source_ref": "accession number or URL from bundle",
       "source_quote": "direct quote 10-200 chars",
       "roles_affected": integer or null,
       "programme_name": string or null,
-      "filing_type": "8-K Item 2.05" | "media_confirmed" | "earnings_confirmed" | "vsp" | "performance_managed" | "quiet_layoff" | null
+      "filing_type": "e.g. 8-K Item 2.05" or null
     }
   ],
 
   "forward_signals": [
     {
-      "signal_type": one of the full signal taxonomy above,
-      "description": "what the signal is and why it is predictive — be specific about the mechanism (e.g. 'RTO mandate set at 5 days/week in context of 40% remote workforce = designed attrition')",
-      "source_ref": "accession/URL/tier from bundle",
+      "signal_type": "activist_pressure" | "sustained_losses" | "ceo_language" | "cost_pressure" | "headcount_drop" | "impairment" | "nt_filing" | "strategic_distress" | "profitability_pivot" | "restructuring_charge" | "other",
+      "description": "what the signal is",
+      "source_ref": "accession/URL/tier",
       "source_quote": "direct quote 10-200 chars",
       "severity": 1 | 2 | 3 | 4,
       "forward_looking": boolean,
@@ -490,22 +336,22 @@ OUTPUT — return ONLY this JSON object, nothing else.
     "phase": "early" | "mid" | "late" | "complete" | "unknown",
     "severance_component_pct": number 0-100 or null,
     "evidence_quote": direct quote or null,
-    "source_filings": ["accession numbers or source refs"]
+    "source_filings": ["accession numbers"]
   },
 
   "headcount": {
     "low": integer or null,
     "mid": integer or null,
     "high": integer or null,
-    "basis": "explanation of math — include source",
+    "basis": "explanation of math",
     "pct_of_workforce": number or null,
     "confidence": "high" | "medium" | "low",
     "inferred": boolean
   },
 
   "function_risk": {
-    "at_risk": [{ "function": "e.g. customer service (AI displacement risk)", "confidence": "high|medium|low", "evidence": "quote", "source_ref": "ref" }],
-    "protected": [{ "function": "e.g. hardware engineers", "confidence": "high|medium|low", "evidence": "quote", "source_ref": "ref" }],
+    "at_risk": [{ "function": "e.g. back-office technology", "confidence": "high|medium|low", "evidence": "quote", "source_ref": "ref" }],
+    "protected": [{ "function": "e.g. client-facing brokers", "confidence": "high|medium|low", "evidence": "quote", "source_ref": "ref" }],
     "unstated_note": "if functions not explicitly named, say so" or null
   },
 
@@ -528,20 +374,24 @@ OUTPUT — return ONLY this JSON object, nothing else.
   },
 
   "trajectory": "escalating" | "stable" | "completing" | "unknown",
-  "predictive_horizon": "30d" | "60d" | "90d" | "180d+" | null,
   "large_employer_flag": boolean,
 
-  "summary": "3-4 sentences for someone worried about their job. Lead with the plain-English verdict. Name the layoff TYPE (e.g. 'Meta has been managing out underperformers via scaled PIPs' is clearer than 'restructuring'). Distinguish confirmed from predictive. Reference headcount numbers and dates where known. Max 65 words. End with 'This reflects confirmed public reporting.' OR 'This is a predictive signal based on public filings and media — not a confirmed outcome.'",
+  "summary": "3-4 sentence brief written for someone worried about their job. Lead with the plain-English verdict. Use conversational language. Reference programme name, headcount numbers, and dates where known. Max 60 words. End with 'This reflects confirmed public announcements.' OR 'This is a predictive signal based on public filings — not a confirmed outcome.'",
 
-  "reasoning_chain": "Step-by-step: what you found in each source, how you weighted it, which layoff types you looked for and what you found (or didn't), why you chose this state and score, what would push the state higher or lower"
+  "reasoning_chain": "Max 3 sentences: key signals found, why you chose this state, primary uncertainty."
 }
 
 Return JSON only. No preamble, no markdown fences, no commentary.`;
 
   try {
+    // v7.2: max_tokens raised from 1_500 → 3_500.
+    // At 1_500 the JSON was regularly truncating for companies with real signals
+    // (reasoning_chain + multiple forward_signals + source_quotes consumed the
+    // entire budget). Truncated JSON → safeParseJSON returns null →
+    // emptyIntelligence (CLEAR/0) was silently cached for up to 72 hours.
     const resp = await anthropic.messages.create({
-      model:      'claude-sonnet-4-6',
-      max_tokens: 2_500,                // v7.3: raised 2_000→2_500 for expanded taxonomy
+      model:      'claude-sonnet-4-5',
+      max_tokens: 3_500,
       system: [
         {
           type: 'text',
@@ -561,16 +411,24 @@ Return JSON only. No preamble, no markdown fences, no commentary.`;
 
     const parsed = safeParseJSON<any>(content.text, null);
     if (!parsed) {
-      empty.low_confidence_reason = 'Failed to parse Sonnet JSON output';
-      empty.requires_review = true;
-      empty.validator_notes.push('JSON parse failure');
-      return empty;
+      // v7.2: throw instead of returning CLEAR/0 so the route can skip caching.
+      // The old behaviour persisted emptyIntelligence to Supabase and served
+      // it for up to 72 hours — masking real signals.
+      console.error(
+        `[nlp] JSON parse failure for ${bundle.company} (${bundle.ticker}). ` +
+        `Response length: ${content.text.length} chars. ` +
+        `Possible truncation at max_tokens=${3_500}.`,
+      );
+      throw new Error('NLP_PARSE_FAILURE');
     }
 
     const intel = normaliseIntelligence(parsed);
     return runPostValidators(intel, bundle);
 
   } catch (err: any) {
+    // Re-throw NLP_PARSE_FAILURE so route can handle it without caching.
+    if (err?.message === 'NLP_PARSE_FAILURE') throw err;
+
     console.error('[nlp] comprehensiveAnalysis failed:', err?.message || err);
     empty.low_confidence_reason = `Sonnet call failed: ${err?.message || 'unknown'}`;
     empty.requires_review = true;
@@ -607,7 +465,6 @@ function emptyIntelligence(): ComprehensiveIntelligence {
     },
     waves: { waves_confirmed: 0, further_waves_signal: null, evidence_quote: null, confidence: 'low' },
     trajectory: 'unknown',
-    predictive_horizon: null,
     large_employer_flag: false,
     summary: '',
     reasoning_chain: '',
@@ -627,11 +484,6 @@ function normaliseIntelligence(raw: any): ComprehensiveIntelligence {
   const rawScore = typeof raw.score === 'number' ? raw.score : band.floor;
   const score = Math.max(band.floor, Math.min(band.ceiling, Math.round(rawScore)));
 
-  const validHorizons: PredictiveHorizon[] = ['30d', '60d', '90d', '180d+', null];
-  const predictive_horizon: PredictiveHorizon = validHorizons.includes(raw.predictive_horizon)
-    ? raw.predictive_horizon
-    : null;
-
   return {
     state,
     score,
@@ -650,7 +502,6 @@ function normaliseIntelligence(raw: any): ComprehensiveIntelligence {
     waves: normaliseWaves(raw.waves),
     trajectory: ['escalating','stable','completing','unknown'].includes(raw.trajectory)
       ? raw.trajectory : 'unknown',
-    predictive_horizon,
     large_employer_flag: !!raw.large_employer_flag,
     summary: typeof raw.summary === 'string' ? raw.summary.trim() : '',
     reasoning_chain: typeof raw.reasoning_chain === 'string' ? raw.reasoning_chain.trim() : '',
@@ -680,8 +531,11 @@ function normaliseConfirmedEvent(e: any): IntelligenceConfirmedEvent | null {
 function normaliseForwardSignal(s: any): IntelligenceForwardSignal | null {
   if (!s || typeof s !== 'object') return null;
   if (!s.description || !s.source_ref || !s.source_quote) return null;
+  const validTypes = ['activist_pressure','sustained_losses','ceo_language','cost_pressure',
+    'headcount_drop','impairment','nt_filing','strategic_distress','profitability_pivot',
+    'restructuring_charge','other'];
   return {
-    signal_type:     VALID_SIGNAL_TYPES.includes(s.signal_type) ? s.signal_type : 'other',
+    signal_type:     validTypes.includes(s.signal_type) ? s.signal_type : 'other',
     description:     String(s.description).trim(),
     source_ref:      String(s.source_ref).trim(),
     source_quote:    String(s.source_quote).trim().slice(0, 400),
@@ -772,76 +626,13 @@ function normaliseWaves(w: any): WavesIntelligence {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// v7.4: XBRL restructuring charge detector
-// Parses companyFacts directly to find RestructuringCharges / SeveranceCosts1 /
-// BusinessExitCosts1 / RestructuringProvision in the last 2 years.
-// Returns the largest single charge found and an evidence string for the signal.
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface XBRLChargeResult {
-  hasCharges: boolean;
-  maxChargeMillion: number;   // largest single charge in $M
-  totalChargeMillion: number; // sum across all matching entries
-  evidence: string;           // description for signal source_quote
-}
-
-function detectXBRLRestructuringCharges(companyFacts: any): XBRLChargeResult {
-  const empty: XBRLChargeResult = { hasCharges: false, maxChargeMillion: 0, totalChargeMillion: 0, evidence: '' };
-  if (!companyFacts?.facts) return empty;
-
-  const cutoff = Date.now() - 730 * 86_400_000; // 2 years
-  const restructuringKeys = [
-    'RestructuringCharges',
-    'RestructuringCostsAndAssetImpairmentCharges',
-    'SeveranceCosts1',
-    'BusinessExitCosts1',
-    'RestructuringProvision',
-  ];
-
-  let maxMillion = 0;
-  let totalMillion = 0;
-  let bestEvidence = '';
-
-  for (const taxonomy of ['us-gaap', 'ifrs-full']) {
-    const items = companyFacts.facts[taxonomy];
-    if (!items) continue;
-    for (const key of restructuringKeys) {
-      const item = items[key];
-      if (!item?.units?.USD) continue;
-      const entries: any[] = item.units.USD;
-      if (!Array.isArray(entries)) continue;
-      for (const e of entries) {
-        if (typeof e.val !== 'number' || e.val <= 0) continue;
-        const end = e.end || (e.fy ? `${e.fy}-12-31` : null);
-        if (!end || Date.parse(end) < cutoff) continue;
-        const millions = Math.round((e.val / 1_000_000) * 10) / 10;
-        totalMillion += millions;
-        if (millions > maxMillion) {
-          maxMillion = millions;
-          bestEvidence = `${key}: $${millions}M (period ending ${end}, filed ${e.filed || 'unknown'})`;
-        }
-      }
-    }
-  }
-
-  if (maxMillion === 0) return empty;
-  return {
-    hasCharges: true,
-    maxChargeMillion: maxMillion,
-    totalChargeMillion: Math.round(totalMillion * 10) / 10,
-    evidence: bestEvidence,
-  };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// POST-VALIDATORS — v7.4 (includes XBRL escalation)
+// POST-VALIDATORS — strict-mode guardrails
 // ─────────────────────────────────────────────────────────────────────────────
 
 function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBundle): ComprehensiveIntelligence {
   const notes: string[] = [];
   let requiresReview = false;
 
-  // Build valid ref set — accept tier names as valid refs (news-only evidence)
   const validRefs = new Set<string>();
   for (const f of bundle.filings) {
     validRefs.add(f.accession);
@@ -859,16 +650,9 @@ function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBun
     validRefs.add(n.source);
     validRefs.add(n.tier);
     validRefs.add(n.tier.toUpperCase());
-    // v7.3: accept tier aliases so news-only claims aren't stripped
-    validRefs.add('tier_a'); validRefs.add('tier_b'); validRefs.add('tier_c');
-    validRefs.add('media_confirmed'); validRefs.add('earnings_confirmed');
   }
   validRefs.add('xbrl');
   validRefs.add('companyfacts');
-  // v7.3: additional tier aliases
-  validRefs.add('tier_a'); validRefs.add('tier_b'); validRefs.add('tier_c');
-  validRefs.add('media_confirmed'); validRefs.add('earnings_confirmed');
-  validRefs.add('vsp'); validRefs.add('performance_managed'); validRefs.add('quiet_layoff');
 
   const isValidRef = (ref: string): boolean => {
     if (!ref) return false;
@@ -881,7 +665,6 @@ function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBun
     return false;
   };
 
-  // Strip events / signals with completely unattributable refs
   const beforeConfirmed = intel.confirmed_events.length;
   intel.confirmed_events = intel.confirmed_events.filter(e => {
     if (!isValidRef(e.source_ref)) {
@@ -908,7 +691,6 @@ function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBun
     notes.push(`Removed ${beforeSignals - intel.forward_signals.length} unattributed forward signals`);
   }
 
-  // Confidence floor enforcement
   const independentSources = countIndependentSources(intel);
   if (intel.confidence === 'high' && independentSources < 3) {
     notes.push(`Downgraded confidence high→medium (${independentSources} sources, need 3)`);
@@ -926,121 +708,19 @@ function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBun
       : `Only ${independentSources} supporting source${independentSources === 1 ? '' : 's'}`;
   }
 
-  // ── v7.4: XBRL RESTRUCTURING CHARGE ESCALATION ──────────────────────────────
-  // If XBRL contains restructuring charges / severance costs in the last 2 years
-  // and Claude returned CLEAR, enforce minimum WATCH. This is a deterministic
-  // safety net — XBRL data is legally disclosed financial fact, not inference.
-  // ─────────────────────────────────────────────────────────────────────────────
-  if (intel.state === 'CLEAR') {
-    const xbrl = detectXBRLRestructuringCharges(bundle.companyFacts);
-    if (xbrl.hasCharges) {
-      const charge = xbrl.maxChargeMillion;
-      let minScore: number;
-      let severity: 1 | 2 | 3 | 4;
-
-      if (charge >= 50) {
-        minScore = 50;
-        severity = 2;
-        notes.push(`XBRL escalation: RestructuringCharges $${charge}M — enforcing WATCH/50 (large charge ≥$50M)`);
-      } else if (charge >= 10) {
-        minScore = 40;
-        severity = 3;
-        notes.push(`XBRL escalation: RestructuringCharges $${charge}M — enforcing WATCH/40 (significant charge $10M–$49M)`);
-      } else {
-        minScore = STATE_BANDS.WATCH.floor;
-        severity = 4;
-        notes.push(`XBRL escalation: RestructuringCharges $${charge}M — enforcing WATCH/${STATE_BANDS.WATCH.floor} (charge $1M–$9M)`);
-      }
-
-      intel.state = 'WATCH';
-      intel.score = Math.max(intel.score, minScore);
-      requiresReview = true;
-
-      // Inject synthetic restructuring_charge forward signal if Claude missed it
-      const alreadyHasCharge = intel.forward_signals.some(s => s.signal_type === 'restructuring_charge');
-      if (!alreadyHasCharge) {
-        intel.forward_signals.push({
-          signal_type: 'restructuring_charge',
-          description: `XBRL restructuring/severance charge of $${charge}M detected in recent SEC filings (last 2 years). This is a legally disclosed financial fact indicating past or ongoing workforce reduction activity.`,
-          source_ref: 'xbrl',
-          source_quote: xbrl.evidence.slice(0, 400),
-          severity,
-          forward_looking: false,
-          escalation_type: 'escalation',
-          inferred: false,
-        });
-        notes.push(`Injected restructuring_charge forward signal from XBRL: ${xbrl.evidence.slice(0, 80)}`);
-      }
-    }
-  }
-
-  // v7.3: MEDIA ESCALATION RULE
-  // Count Tier A and Tier B news items in the bundle that mention workforce-related terms
-  const workforceTerms = [
-    'layoff', 'laid off', 'job cut', 'headcount', 'workforce', 'redundan',
-    'retrench', 'downsize', 'restructur', 'severance', 'pip', 'performance',
-    'managing out', 'rto', 'return to office', 'ai replac', 'outsourc', 'offshor',
-    'voluntary separation', 'vsp', 'buyout', 'early retirement',
-  ];
-  const isWorkforceNews = (n: any) =>
-    workforceTerms.some(t => (n.title || '').toLowerCase().includes(t) || (n.summary || '').toLowerCase().includes(t));
-
-  const tierAWorkforceNews  = bundle.news.filter(n => n.tier === 'tier_a' && isWorkforceNews(n));
-  const tierBWorkforceNews  = bundle.news.filter(n => n.tier === 'tier_b' && isWorkforceNews(n));
-  const anyWorkforceNews    = tierAWorkforceNews.length + tierBWorkforceNews.length;
-
-  if (tierAWorkforceNews.length >= 2 && intel.state === 'CLEAR') {
-    // 2+ Tier A sources confirming workforce reduction → minimum ACTIVE
-    notes.push(`Media escalation: ${tierAWorkforceNews.length} Tier A workforce-reduction items — enforcing minimum ACTIVE`);
-    intel.state = 'ACTIVE';
-    intel.score = Math.max(intel.score, STATE_BANDS.ACTIVE.floor);
-    requiresReview = true;
-  } else if (tierAWorkforceNews.length >= 2 && intel.state === 'WATCH') {
-    notes.push(`Media escalation: ${tierAWorkforceNews.length} Tier A workforce-reduction items — enforcing minimum ACTIVE`);
-    intel.state = 'ACTIVE';
-    intel.score = Math.max(intel.score, STATE_BANDS.ACTIVE.floor);
-    requiresReview = true;
-  } else if (
-    (tierAWorkforceNews.length >= 1 || tierBWorkforceNews.length >= 2) &&
-    (intel.state === 'CLEAR')
-  ) {
-    // 1 Tier A OR 2 Tier B → minimum WATCH
-    notes.push(`Media escalation: ${anyWorkforceNews} workforce-reduction news item(s) — enforcing minimum WATCH`);
-    intel.state = 'WATCH';
-    intel.score = Math.max(intel.score, STATE_BANDS.WATCH.floor);
-    requiresReview = true;
-  }
-
-  // v7.3: SCORE FLOOR — any company with forward signals cannot score 0
-  if (intel.forward_signals.length > 0 && intel.score < 8) {
-    intel.score = 8;
-    notes.push('Score floor applied: forward signals present, minimum score 8');
-  }
-
-  // ACTIVE without confirmed event — flag but don't downgrade (v7.3: media can earn ACTIVE)
   if (intel.state === 'ACTIVE' && intel.confirmed_events.length === 0 && !intel.bankruptcy.detected && !intel.programme.name) {
-    if (tierAWorkforceNews.length < 2) {
-      notes.push('ACTIVE state without confirmed event, bankruptcy, programme, or 2+ Tier A media — flagged for review');
-      requiresReview = true;
-    }
+    notes.push('ACTIVE state without confirmed event, bankruptcy, or named programme — flagged for review');
+    requiresReview = true;
   }
 
-  // Score band enforcement
   const band = STATE_BANDS[intel.state];
   if (intel.score < band.floor || intel.score > band.ceiling) {
     const corrected = Math.max(band.floor, Math.min(band.ceiling, intel.score));
-    notes.push(`Score ${intel.score} outside ${intel.state} band [${band.floor}–${band.ceiling}]; corrected to ${corrected}`);
+    notes.push(`Score ${intel.score} outside ${intel.state} band; corrected to ${corrected}`);
     intel.score = corrected;
   }
 
-  // 90-day recency check for ACTIVE (no programme, no media escalation)
-  if (
-    intel.state === 'ACTIVE' &&
-    intel.confirmed_events.length > 0 &&
-    !intel.bankruptcy.detected &&
-    !intel.programme.name &&
-    tierAWorkforceNews.length < 2
-  ) {
+  if (intel.state === 'ACTIVE' && intel.confirmed_events.length > 0 && !intel.bankruptcy.detected && !intel.programme.name) {
     const today = Date.now();
     const anyRecent = intel.confirmed_events.some(e => {
       if (!e.date) return true;
@@ -1049,14 +729,13 @@ function runPostValidators(intel: ComprehensiveIntelligence, bundle: EvidenceBun
     });
     const anyEscalation = intel.forward_signals.some(s => s.escalation_type === 'escalation');
     if (!anyRecent && !anyEscalation) {
-      notes.push('Confirmed events >90d old with no escalation signals and no fresh Tier A media — consider LIKELY/WATCH');
+      // v7.2: actually demote instead of just flagging
+      notes.push('Demoted ACTIVE → LIKELY: confirmed events >90 days old, no escalation signals');
+      intel.state = 'LIKELY';
+      intel.score = Math.min(intel.score, 72); // cap at LIKELY ceiling
+      intel.score = Math.max(intel.score, 45); // floor at LIKELY floor
       requiresReview = true;
     }
-  }
-
-  // Clear predictive_horizon for CLEAR state
-  if (intel.state === 'CLEAR') {
-    intel.predictive_horizon = null;
   }
 
   intel.validator_notes = notes;
@@ -1110,7 +789,7 @@ export async function classifyCompanyState(
   if (!process.env.ANTHROPIC_API_KEY) return def;
   try {
     const msg = await anthropic.messages.create({
-      model: 'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-5',
       max_tokens: 1000,
       messages: [{
         role: 'user',
