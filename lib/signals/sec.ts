@@ -1,21 +1,29 @@
-// lib/signals/sec.ts — EjectSeat Consumer v7
+// lib/signals/sec.ts — EjectSeat Consumer v7.2
 //
-// ROLE CHANGE vs v5/v6.1:
-//   v5 interpreted XBRL + classified charges + scored them.
-//   v7 is a PURE FETCHER. All interpretation happens in nlp-analyzer's
-//   comprehensive Sonnet call. This file only retrieves raw evidence.
+// v7.2 ACCURACY FIXES:
 //
-// Exports:
-//   - fetchEvidenceBundle(cik, companyName) → EvidenceBundle for Sonnet
-//   - fetchLegacyAuditSignals(cik) → Signal[] for the UI audit strip
-//   - collectSECSignals(...) → thin wrapper preserved for v5 fallback path
+//   1. Separate text budgets for annual vs interim filings.
+//      v7.1 applied 12K to ALL filing types. 10-Qs (interim) carry the most
+//      current restructuring disclosures but are shorter documents — 20K gives
+//      full coverage. Annual 10-Ks are much longer; 15K with section targeting
+//      is sufficient. 8-Ks get a dedicated slicer (see below).
 //
-// v7.1 SPEED CHANGES:
-//   - FETCH_TIMEOUT_MS: 8s → 5s  (fail faster on slow endpoints)
-//   - fetchText cap: 300K → 150K (still far more than we slice)
-//   - Per-filing text budget: 30K → 12K chars
-//     sliceAroundSections already targets restructuring-relevant sections;
-//     12K is sufficient and cuts Sonnet context by ~60%.
+//   2. 8-K filings: dedicated section slicer prioritising Item 2.05/2.06/5.02.
+//      8-K Item 2.05 (Entry into Material Employment Agreements / workforce
+//      reductions), Item 2.06 (Material Impairments), and Item 5.02 (Departure
+//      of Directors/Officers) are the highest-signal items for layoff detection.
+//      sliceAroundSections now includes these as top-priority anchors, and 8-Ks
+//      get their own dedicated slicer that leads with them.
+//
+//   3. Deduplicate EDGAR fetches.
+//      fetchLegacyAuditSignals previously made its own companyfacts + submissions
+//      requests. Now it accepts an optional pre-fetched facts/submissions object
+//      from fetchEvidenceBundle, eliminating the second EDGAR round-trip.
+//
+// PRIOR VERSION NOTES:
+//   v7.1: FETCH_TIMEOUT_MS 8s→5s (preserved)
+//   v7.1: fetchText cap 300K→150K (preserved)
+//   v7:   Pure fetcher — no signal scoring in this file
 
 import type {
   Signal, EvidenceBundle, FilingEvidence, HeadcountRecord,
@@ -36,6 +44,14 @@ const FORMS_RELEVANT = new Set([
 
 // v7.1: reduced from 8_000 — fail faster on slow EDGAR endpoints
 const FETCH_TIMEOUT_MS = 5_000;
+
+// v7.2: separate text budgets per filing type
+// 10-Q / 6-K (interim): higher budget — most current, shorter documents
+const TEXT_BUDGET_INTERIM  = 20_000;
+// 10-K / 20-F (annual): section-targeted slice of longer document
+const TEXT_BUDGET_ANNUAL   = 15_000;
+// 8-K: Item-targeted slice (smaller; 8-Ks are focused documents)
+const TEXT_BUDGET_8K       = 10_000;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Low-level fetch helpers
@@ -69,7 +85,7 @@ function padCik(cik: string): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HTML cleanup + smart slicing for long annual filings
+// HTML cleanup
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function stripHtml(html: string): string {
@@ -86,13 +102,20 @@ export function stripHtml(html: string): string {
     .trim();
 }
 
-/**
- * For very long annual filings (10-K, 20-F often 200K+ chars after strip),
- * target the sections where restructuring discussion actually lives.
- * Falls back to head slice if no anchor matches.
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Section slicer for annual filings (10-K, 20-F)
+// Targets restructuring-relevant sections; falls back to head slice.
+// ─────────────────────────────────────────────────────────────────────────────
+
 export function sliceAroundSections(text: string, maxChars: number): string {
   const anchors = [
+    // v7.2: 8-K Items added as top-priority anchors for annual filings that
+    // incorporate 8-K content, and used by slice8K below for pure 8-Ks.
+    /item\s*2\.05/i,
+    /item\s*2\.06/i,
+    /item\s*5\.02/i,
+    /item\s*1\.03/i,
+    // Standard annual sections
     /management['']?s discussion and analysis/i,
     /results of operations/i,
     /restructuring/i,
@@ -138,14 +161,61 @@ export function sliceAroundSections(text: string, maxChars: number): string {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// v7.2: Dedicated 8-K slicer — leads with Item 2.05/2.06/5.02 content.
+// 8-Ks are short focused documents; the entire doc is usually <15K stripped.
+// If the doc fits in budget we return it all; otherwise we prioritise items.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function slice8K(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+
+  // Priority items for workforce/restructuring detection
+  const priorityItems = [
+    /item\s*2\.05/i,
+    /item\s*2\.06/i,
+    /item\s*5\.02/i,
+    /item\s*1\.03/i,
+    /workforce|reduction in force|severance|restructur/i,
+  ];
+
+  const parts: string[] = [];
+  let total = 0;
+  const perItem = Math.floor(maxChars / priorityItems.length);
+
+  for (const pattern of priorityItems) {
+    if (total >= maxChars) break;
+    const m = text.match(pattern);
+    if (!m || m.index == null) continue;
+    const start = Math.max(0, m.index - 200);
+    const end = Math.min(text.length, m.index + perItem);
+    const chunk = text.slice(start, end);
+    parts.push(`[Item section]\n${chunk}`);
+    total += chunk.length + 15;
+  }
+
+  // If nothing matched, fall through to head slice
+  if (parts.length === 0) return text.slice(0, maxChars);
+  return parts.join('\n\n').slice(0, maxChars);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC — fetchEvidenceBundle for v7 comprehensive Sonnet call
+// Returns pre-fetched facts and submissions so fetchLegacyAuditSignals can
+// reuse them without a second EDGAR round-trip (v7.2 dedup fix).
 // ─────────────────────────────────────────────────────────────────────────────
 
 export async function fetchEvidenceBundle(
   cik: string,
   companyName: string,
   lookbackDays: number = 365,
-): Promise<{ companyFacts: any | null; filings: FilingEvidence[]; headcountHistory: HeadcountRecord[] }> {
+): Promise<{
+  companyFacts: any | null;
+  filings: FilingEvidence[];
+  headcountHistory: HeadcountRecord[];
+  // v7.2: expose for reuse in fetchLegacyAuditSignals
+  _rawFacts: any | null;
+  _rawSubmissions: any | null;
+}> {
 
   const paddedCik = padCik(cik);
   const cikNum = parseInt(cik.replace(/^0+/, ''), 10);
@@ -173,8 +243,9 @@ export async function fetchEvidenceBundle(
     targets.push({ acc: accs[i], form, date: dates[i], doc: docs[i] });
   }
 
-  const hasAnnual = targets.some(t => t.form === '10-K' || t.form === '20-F');
+  const hasAnnual  = targets.some(t => t.form === '10-K' || t.form === '20-F');
   const hasInterim = targets.some(t => t.form === '10-Q' || t.form === '6-K');
+
   if (!hasAnnual) {
     for (let i = 0; i < forms.length; i++) {
       if (forms[i] === '10-K' || forms[i] === '20-F') {
@@ -196,21 +267,29 @@ export async function fetchEvidenceBundle(
     }
   }
 
-  // v7.1: per-filing text budget reduced 30K → 12K.
-  // sliceAroundSections targets restructuring-relevant sections — 12K is
-  // sufficient for those sections and cuts Sonnet input context by ~60%.
-  const TEXT_BUDGET = 12_000;
-
   const filings: FilingEvidence[] = (await Promise.all(targets.map(async (t): Promise<FilingEvidence | null> => {
     const accClean = t.acc.replace(/-/g, '');
     const url = `${EDGAR}/Archives/edgar/data/${cikNum}/${accClean}/${t.doc}`;
     const raw = await fetchText(url, 150_000);
     if (!raw) return null;
     const stripped = stripHtml(raw);
-    const isAnnual = /10-K|20-F/i.test(t.form);
-    const text = stripped.length > TEXT_BUDGET
-      ? (isAnnual ? sliceAroundSections(stripped, TEXT_BUDGET) : stripped.slice(0, TEXT_BUDGET))
-      : stripped;
+
+    // v7.2: per-type text budgets
+    let text: string;
+    const form = t.form.toUpperCase();
+    if (form === '8-K' || form === '8-K/A') {
+      text = slice8K(stripped, TEXT_BUDGET_8K);
+    } else if (form === '10-K' || form === '20-F' || form === '10-K/A' || form === '20-F/A') {
+      text = stripped.length > TEXT_BUDGET_ANNUAL
+        ? sliceAroundSections(stripped, TEXT_BUDGET_ANNUAL)
+        : stripped;
+    } else {
+      // 10-Q, 10-Q/A, 6-K, 6-K/A, NT filings
+      text = stripped.length > TEXT_BUDGET_INTERIM
+        ? stripped.slice(0, TEXT_BUDGET_INTERIM)
+        : stripped;
+    }
+
     return { accession: t.acc, form: t.form, filingDate: t.date, url, text };
   }))).filter((f): f is FilingEvidence => f !== null);
 
@@ -229,24 +308,35 @@ export async function fetchEvidenceBundle(
     }
   }
 
-  return { companyFacts: facts, filings, headcountHistory };
+  return {
+    companyFacts: facts,
+    filings,
+    headcountHistory,
+    _rawFacts: facts,
+    _rawSubmissions: submissions,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PUBLIC — fetchLegacyAuditSignals
-// In v7, produces a human-readable list of what's in the evidence bundle
-// for the UI audit strip. Do NOT drive scoring — Sonnet does.
+// v7.2: accepts pre-fetched facts + submissions to avoid duplicate EDGAR calls.
+// Pass the _rawFacts and _rawSubmissions returned by fetchEvidenceBundle.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export async function fetchLegacyAuditSignals(cik: string): Promise<Signal[]> {
+export async function fetchLegacyAuditSignals(
+  cik: string,
+  prefetchedFacts?: any,
+  prefetchedSubmissions?: any,
+): Promise<Signal[]> {
   const out: Signal[] = [];
   const paddedCik = padCik(cik);
   const cutoff = new Date();
   cutoff.setFullYear(cutoff.getFullYear() - 2);
 
+  // v7.2: reuse pre-fetched data when available; only hit EDGAR if not provided
   const [facts, submissions] = await Promise.all([
-    fetchJSON(`${EDGAR}/api/xbrl/companyfacts/CIK${paddedCik}.json`),
-    fetchJSON(`${EDGAR}/submissions/CIK${paddedCik}.json`),
+    prefetchedFacts      ? Promise.resolve(prefetchedFacts)      : fetchJSON(`${EDGAR}/api/xbrl/companyfacts/CIK${paddedCik}.json`),
+    prefetchedSubmissions ? Promise.resolve(prefetchedSubmissions) : fetchJSON(`${EDGAR}/submissions/CIK${paddedCik}.json`),
   ]);
 
   const usGaap = facts?.facts?.['us-gaap'] || {};
@@ -377,5 +467,10 @@ export async function fetchFullFilingsForAnalysis(cik: string): Promise<{
   filings: FilingEvidence[];
   headcountHistory: HeadcountRecord[];
 }> {
-  return fetchEvidenceBundle(cik, '', 365);
+  const result = await fetchEvidenceBundle(cik, '', 365);
+  return {
+    companyFacts: result.companyFacts,
+    filings: result.filings,
+    headcountHistory: result.headcountHistory,
+  };
 }
