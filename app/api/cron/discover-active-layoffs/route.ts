@@ -38,7 +38,8 @@ const supabase = createClient(
 const MAX_CANDIDATES_PER_RUN = 12;
 
 // Don't re-score a company that's already in the feed with a recent score.
-const RESCORE_COOLDOWN_HOURS = 6;
+// Set to ~22h since the cron now runs once daily (Vercel Hobby plan limit).
+const RESCORE_COOLDOWN_HOURS = 22;
 
 function baseUrl(req: NextRequest): string {
   // Prefer an explicit env var (set this to https://ejectseat.com in Vercel).
@@ -132,7 +133,7 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const candidates = await discoverActiveLayoffCandidates({ edgarLookbackHours: 6, mediaLookbackHours: 24 });
+    const candidates = await discoverActiveLayoffCandidates({ edgarLookbackHours: 26, mediaLookbackHours: 26 });
     summary.discovered = candidates.length;
 
     const toScore: DiscoveryCandidate[] = [];
