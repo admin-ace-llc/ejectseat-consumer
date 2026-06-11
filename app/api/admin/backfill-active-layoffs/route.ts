@@ -81,7 +81,9 @@ async function scoreCandidate(req: NextRequest, candidate: DiscoveryCandidate): 
       console.error(`[backfill-active-layoffs] /api/score ${res.status} for ${candidate.companyName}`);
       return null;
     }
-    return await res.json();
+    const json = await res.json();
+    // /api/score returns { risk: RiskScore, company: {...} } — unwrap.
+    return (json?.risk ?? json) as RiskScore;
   } catch (err: any) {
     console.error(`[backfill-active-layoffs] scoring failed for ${candidate.companyName}:`, err?.message || err);
     return null;
