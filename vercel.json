@@ -1,11 +1,8 @@
 {
-  "functions": {
-    "app/api/score/route.ts":      { "maxDuration": 60 },
-    "app/api/landingzone/route.ts":{ "maxDuration": 30 },
-    "app/api/high-risk/route.ts":  { "maxDuration": 10 },
-    "app/api/resolve/route.ts":    { "maxDuration": 10 },
-    "app/api/auth/route.ts":       { "maxDuration": 10 },
-    "app/api/beacon/route.ts":     { "maxDuration": 10 },
-    "app/api/beta/route.ts":       { "maxDuration": 10 }
-  }
+  "crons": [
+    {
+      "path": "/api/cron/discover-active-layoffs",
+      "schedule": "0 */6 * * *"
+    }
+  ]
 }
