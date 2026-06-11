@@ -1,5 +1,5 @@
 {
-  "_comment": "Add this 'crons' array to the EXISTING vercel.json at the repo root. If vercel.json doesn't exist yet, create it with this content. If it exists, merge the 'crons' key in alongside whatever is already there (don't overwrite other keys). Schedule set to once daily (Vercel Hobby plan limit).",
+  "Add this 'crons' array to the EXISTING vercel.json at the repo root. If vercel.json doesn't exist yet, create it with this content. If it exists, merge the 'crons' key in alongside whatever is already there (don't overwrite other keys). Schedule set to once daily (Vercel Hobby plan limit).",
   "crons": [
     {
       "path": "/api/cron/discover-active-layoffs",
