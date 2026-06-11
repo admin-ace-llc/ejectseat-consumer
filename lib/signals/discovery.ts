@@ -245,8 +245,8 @@ export async function discoverActiveLayoffCandidates(opts?: {
   mediaLookbackHours?: number;
 }): Promise<DiscoveryCandidate[]> {
   const [edgar, media] = await Promise.all([
-    discoverFromEdgar(opts?.edgarLookbackHours ?? 6),
-    discoverFromMedia(opts?.mediaLookbackHours ?? 24),
+    discoverFromEdgar(opts?.edgarLookbackHours ?? 26),
+    discoverFromMedia(opts?.mediaLookbackHours ?? 26),
   ]);
 
   const byName = new Map<string, DiscoveryCandidate>();
