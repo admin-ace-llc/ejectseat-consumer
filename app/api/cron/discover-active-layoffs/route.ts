@@ -91,9 +91,23 @@ async function upsertFeedEntry(candidate: DiscoveryCandidate, score: RiskScore) 
   // Only "currently in active layoffs" states make the breaking-news ticker.
   if (state !== 'LIKELY' && state !== 'ACTIVE') return;
 
-  const keySignal = score.signals?.[0]?.description
-    || score.confirmedEvents?.[0]?.description
-    || null;
+  // Cast to `any` here: the exact shape of Signal / confirmed-event objects
+  // varies across versions of the shared types and isn't critical to this
+  // route — we just want a short human-readable string if one is available.
+  const firstSignal = score.signals?.[0] as any;
+  const firstEvent = (score as any).confirmedEvents?.[0] as any;
+  const keySignal =
+    firstSignal?.description ||
+    firstSignal?.summary ||
+    firstSignal?.label ||
+    firstSignal?.text ||
+    firstSignal?.title ||
+    firstEvent?.description ||
+    firstEvent?.summary ||
+    firstEvent?.label ||
+    firstEvent?.text ||
+    firstEvent?.title ||
+    null;
 
   const { error } = await supabase
     .from('active_layoffs_feed')
