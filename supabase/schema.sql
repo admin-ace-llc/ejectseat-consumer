@@ -52,6 +52,7 @@ ALTER TABLE companies ADD COLUMN IF NOT EXISTS cached_large_employer_flag boolea
 -- v7 additive columns
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS cached_intelligence        jsonb;
 ALTER TABLE companies ADD COLUMN IF NOT EXISTS cached_pipeline_version    text;
+ALTER TABLE companies ADD COLUMN IF NOT EXISTS created_at                 timestamptz DEFAULT now();
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- score_history — per-score log
@@ -135,6 +136,8 @@ CREATE TABLE IF NOT EXISTS score_usage (
   created_at   timestamptz DEFAULT now()
 );
 
+ALTER TABLE score_usage ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS score_usage_user_idx    ON score_usage (user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS score_usage_session_idx ON score_usage (session_id, created_at DESC);
 
@@ -151,6 +154,8 @@ CREATE TABLE IF NOT EXISTS analytics_events (
   user_agent  text,
   created_at  timestamptz DEFAULT now()
 );
+
+ALTER TABLE analytics_events ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS analytics_events_type_idx ON analytics_events (event_type, created_at DESC);
 CREATE INDEX IF NOT EXISTS analytics_events_user_idx ON analytics_events (user_id, created_at DESC);
@@ -180,6 +185,8 @@ CREATE TABLE IF NOT EXISTS predictions (
   outcome_source_url    text
 );
 
+ALTER TABLE predictions ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS predictions_company_idx ON predictions (company_name, created_at DESC);
 
 -- ─────────────────────────────────────────────────────────────────────────────
@@ -198,6 +205,8 @@ CREATE TABLE IF NOT EXISTS pipeline_comparison (
   v7_requires_review    boolean,
   created_at            timestamptz DEFAULT now()
 );
+
+ALTER TABLE pipeline_comparison ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS pipeline_comparison_created_idx ON pipeline_comparison (created_at DESC);
 
@@ -236,6 +245,8 @@ CREATE TABLE IF NOT EXISTS company_comments (
   hidden      boolean DEFAULT false
 );
 
+ALTER TABLE company_comments ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
+
 CREATE INDEX IF NOT EXISTS company_comments_ticker_idx ON company_comments (ticker, created_at DESC);
 CREATE INDEX IF NOT EXISTS company_comments_iphash_idx ON company_comments (ip_hash, created_at DESC);
 
@@ -266,6 +277,8 @@ CREATE TABLE IF NOT EXISTS enterprise_leads (
   message     text,
   created_at  timestamptz DEFAULT now()
 );
+
+ALTER TABLE enterprise_leads ADD COLUMN IF NOT EXISTS created_at timestamptz DEFAULT now();
 
 CREATE INDEX IF NOT EXISTS enterprise_leads_created_idx ON enterprise_leads (created_at DESC);
 
