@@ -24,14 +24,16 @@
 <meta property="og:url" content="https://ejectseat.io/" />
 <meta property="og:title" content="EjectSeat — Is Your Company Planning Layoffs?" />
 <meta property="og:description" content="Predict layoff risk for any US-listed public company. EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media to produce a forward-looking risk score." />
-<meta property="og:image" content="https://ejectseat.io/og-image.png" />
+<meta property="og:image" content="https://ejectseat.io/api/og" />
+<meta property="og:image:width" content="1200" />
+<meta property="og:image:height" content="630" />
 <meta property="og:site_name" content="EjectSeat" />
 
 <meta name="twitter:card" content="summary_large_image" />
 <meta name="twitter:site" content="@ejectseat" />
 <meta name="twitter:title" content="EjectSeat — Is Your Company Planning Layoffs?" />
 <meta name="twitter:description" content="Predict layoff risk for any US-listed public company. Forward-looking risk scores from SEC filings, earnings calls, and Tier A/B media." />
-<meta name="twitter:image" content="https://ejectseat.io/og-image.png" />
+<meta name="twitter:image" content="https://ejectseat.io/api/og" />
 
 <script type="application/ld+json">
 {
@@ -334,6 +336,7 @@ nav.site a:hover{color:var(--text)}
   cursor: pointer;
   opacity: 0; transform: translateY(6px);
   transition: background 120ms;
+  text-decoration: none; color: inherit;
 }
 .lwt-card:last-child { border-bottom: 0; }
 .lwt-card.in {
@@ -408,7 +411,7 @@ nav.site a:hover{color:var(--text)}
 .hrw-count-badge{display:inline-flex;align-items:center;padding:3px 10px;border-radius:999px;font-size:11px;font-weight:700;background:var(--red-soft);color:var(--red-text);border:1px solid #fecaca;letter-spacing:0.04em;flex-shrink:0}
 .hrw-sub{color:var(--text-dim);font-size:13.5px;margin:5px 0 0;line-height:1.5}
 .hrw-list{padding:0}
-.hrw-card{display:flex;align-items:stretch;border-bottom:1px solid var(--border);cursor:pointer;opacity:0;transform:translateY(6px);transition:background 120ms}
+.hrw-card{display:flex;align-items:stretch;border-bottom:1px solid var(--border);cursor:pointer;opacity:0;transform:translateY(6px);transition:background 120ms;text-decoration:none;color:inherit}
 .hrw-card:last-child{border-bottom:0}
 .hrw-card.in{opacity:1;transform:translateY(0);transition:opacity 320ms var(--ease-out),transform 320ms var(--ease-out),background 120ms}
 .hrw-card:hover{background:var(--panel-alt)}
@@ -817,7 +820,10 @@ function renderLayoffWatch(companies, source) {
     const srcClass   = c.source === 'edgar' ? 'edgar' : '';
     const srcLabel   = c.source === 'edgar' ? 'SEC EDGAR' : 'Verified SEC filing';
 
-    return `<div class="lwt-card" role="listitem" onclick="layoffActivate(${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' ')layoffActivate(${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})">
+    const href = c.ticker ? `/company/${encodeURIComponent(c.ticker.toUpperCase())}` : null;
+    const tag  = href ? 'a' : 'div';
+    const hrefAttr = href ? ` href="${h(href)}"` : '';
+    return `<${tag} class="lwt-card" role="listitem"${hrefAttr} onclick="return layoffActivate(event,${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})" onkeydown="if(event.key===' ')return layoffActivate(event,${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})">
   <div class="lwt-stripe ${stateClass}"></div>
   <div class="lwt-body">
     <div class="lwt-top-row">
@@ -834,7 +840,7 @@ function renderLayoffWatch(companies, source) {
       <span class="lwt-cta-link">Full score →</span>
     </div>
   </div>
-</div>`;
+</${tag}>`;
   }).join('');
 
   list.innerHTML = cards;
@@ -846,13 +852,16 @@ function renderLayoffWatch(companies, source) {
   });
 }
 
-function layoffActivate(companyName, ticker) {
-  if (!companyName) return;
+function layoffActivate(event, companyName, ticker) {
+  if (!companyName) return true;
+  if (event && (event.metaKey || event.ctrlKey || event.shiftKey || event.button === 1)) return true;
+  if (event) event.preventDefault();
   queryEl.value = companyName;
   closeSuggestions();
   window.scrollTo({ top: 0, behavior: 'smooth' });
   beacon('lwt_company_clicked', { companyName, ticker });
   setTimeout(() => runScore(companyName, ticker || undefined), 300);
+  return false;
 }
 
 // "Check my company" CTA inside ticker section
@@ -864,8 +873,8 @@ $('lwt-check-btn').addEventListener('click', () => {
 
 /* ═══ HIGH RISK WATCH ══════════════════════════════════════════════════ */
 async function fetchHighRiskWatch(){try{const res=await fetch('/api/high-risk');if(!res.ok)return;const data=await res.json();renderHighRiskWatch(data.companies||[])}catch{}}
-function renderHighRiskWatch(companies){const section=$('hrw-section');const list=$('hrw-list');const countEl=$('hrw-count');if(!section||!list)return;if(!companies||companies.length===0){section.style.display='none';return}section.style.display='block';if(countEl)countEl.textContent=`${companies.length} compan${companies.length===1?'y':'ies'}`;list.innerHTML=companies.slice(0,20).map(c=>{const stateClass=['ACTIVE','LIKELY','WATCH','CLEAR'].includes(c.state)?c.state:'ACTIVE';const age=fmtAge(c.scoredAt);const signalText=c.keySignal||c.programmeName?`Named restructuring programme "${c.programmeName}" detected.`:'Elevated risk signals detected in SEC filings.';const scoreColor=stateClass==='ACTIVE'?'var(--red-text)':stateClass==='LIKELY'?'var(--amber-text)':stateClass==='WATCH'?'var(--accent-text)':'var(--green-text)';return`<div class="hrw-card" role="listitem" onclick="hrwActivate(${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})" tabindex="0"><div class="hrw-stripe ${stateClass}"></div><div class="hrw-body"><div class="hrw-top-row"><div class="hrw-left-meta"><span class="hrw-badge ${stateClass}">${stateClass}</span><span class="hrw-score-tag" style="color:${scoreColor}">${c.score||0}<span>/100</span></span></div></div><div class="hrw-name">${h(c.name)}${c.ticker?`<span class="tk">${h(c.ticker)}</span>`:''}</div><div class="hrw-signal">${h(signalText)}</div><div class="hrw-foot-row"><span class="hrw-age">${h(age)}</span><span class="hrw-cta-link">Score now →</span></div></div></div>`}).join('');requestAnimationFrame(()=>{list.querySelectorAll('.hrw-card').forEach((card,i)=>{setTimeout(()=>card.classList.add('in'),i*55)})})}
-function hrwActivate(companyName,ticker){if(!companyName)return;queryEl.value=companyName;closeSuggestions();window.scrollTo({top:0,behavior:'smooth'});beacon('hrw_company_clicked',{companyName,ticker});setTimeout(()=>runScore(companyName,ticker||undefined),300)}
+function renderHighRiskWatch(companies){const section=$('hrw-section');const list=$('hrw-list');const countEl=$('hrw-count');if(!section||!list)return;if(!companies||companies.length===0){section.style.display='none';return}section.style.display='block';if(countEl)countEl.textContent=`${companies.length} compan${companies.length===1?'y':'ies'}`;list.innerHTML=companies.slice(0,20).map(c=>{const stateClass=['ACTIVE','LIKELY','WATCH','CLEAR'].includes(c.state)?c.state:'ACTIVE';const age=fmtAge(c.scoredAt);const signalText=c.keySignal||c.programmeName?`Named restructuring programme "${c.programmeName}" detected.`:'Elevated risk signals detected in SEC filings.';const scoreColor=stateClass==='ACTIVE'?'var(--red-text)':stateClass==='LIKELY'?'var(--amber-text)':stateClass==='WATCH'?'var(--accent-text)':'var(--green-text)';const href=c.ticker?`/company/${encodeURIComponent(c.ticker.toUpperCase())}`:null;const tag=href?'a':'div';const hrefAttr=href?` href="${h(href)}"`:'';return`<${tag} class="hrw-card" role="listitem"${hrefAttr} onclick="return hrwActivate(event,${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})" onkeydown="if(event.key===' ')return hrwActivate(event,${JSON.stringify(c.name)},${JSON.stringify(c.ticker||'')})"><div class="hrw-stripe ${stateClass}"></div><div class="hrw-body"><div class="hrw-top-row"><div class="hrw-left-meta"><span class="hrw-badge ${stateClass}">${stateClass}</span><span class="hrw-score-tag" style="color:${scoreColor}">${c.score||0}<span>/100</span></span></div></div><div class="hrw-name">${h(c.name)}${c.ticker?`<span class="tk">${h(c.ticker)}</span>`:''}</div><div class="hrw-signal">${h(signalText)}</div><div class="hrw-foot-row"><span class="hrw-age">${h(age)}</span><span class="hrw-cta-link">Score now →</span></div></div></${tag}>`}).join('');requestAnimationFrame(()=>{list.querySelectorAll('.hrw-card').forEach((card,i)=>{setTimeout(()=>card.classList.add('in'),i*55)})})}
+function hrwActivate(event,companyName,ticker){if(!companyName)return true;if(event&&(event.metaKey||event.ctrlKey||event.shiftKey||event.button===1))return true;if(event)event.preventDefault();queryEl.value=companyName;closeSuggestions();window.scrollTo({top:0,behavior:'smooth'});beacon('hrw_company_clicked',{companyName,ticker});setTimeout(()=>runScore(companyName,ticker||undefined),300);return false}
 
 /* ═══ LANDINGZONE ══════════════════════════════════════════════════════ */
 const ROLE_FUNCTIONS=[{key:'software_engineering',label:'Engineering'},{key:'product_management',label:'Product'},{key:'design',label:'Design'},{key:'data',label:'Data'},{key:'marketing',label:'Marketing'},{key:'sales',label:'Sales'}];
@@ -884,7 +893,17 @@ function countryLabel(code){const opt=$('country-select').querySelector(`option[
 (function init(){
   beacon('page_view',{path:window.location.pathname});
   initLandingZone();
-  queryEl.focus();
+
+  // Deep link from a /company/[ticker] permalink page ("Run live score →")
+  const params=new URLSearchParams(window.location.search);
+  const deepCompany=params.get('company'),deepTicker=params.get('ticker');
+  if(deepCompany){
+    queryEl.value=deepCompany;
+    beacon('deep_link_score',{companyName:deepCompany,ticker:deepTicker});
+    setTimeout(()=>runScore(deepCompany,deepTicker||undefined),200);
+  }else{
+    queryEl.focus();
+  }
 
   // Layoff Watch — fetch immediately, show skeleton while loading, 6h poll
   fetchLayoffWatch();
