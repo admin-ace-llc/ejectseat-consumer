@@ -22,7 +22,7 @@
 
 import type { QuarterlyStatus, FilingStatus } from '@/types';
 
-const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkake@gmail.com)';
+const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkace@gmail.com)';
 const EDGAR_SUBMISSIONS = (cik: string) =>
   `https://data.sec.gov/submissions/CIK${cik.replace(/^0+/, '').padStart(10, '0')}.json`;
 

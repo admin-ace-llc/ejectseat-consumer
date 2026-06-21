@@ -30,7 +30,7 @@ import type {
 } from '@/types';
 import { fmtUSD } from '@/lib/format';
 
-const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkake@gmail.com)';
+const USER_AGENT = 'EjectSeat/1.0 (enquiries.talkace@gmail.com)';
 const EDGAR = 'https://data.sec.gov';
 
 const FORMS_RELEVANT = new Set([
