@@ -102,6 +102,30 @@ async function upsertCompany(
   return data?.id || null;
 }
 
+async function notifyWatchers(ticker: string | undefined, previousState: string | null, newState: string): Promise<void> {
+  if (!ticker || !previousState || previousState === newState) return;
+
+  const { data: watchers, error } = await supabase
+    .from('watches')
+    .select('id, email')
+    .ilike('ticker', ticker);
+
+  if (error || !watchers || watchers.length === 0) return;
+
+  const { sendEmail } = await import('@/lib/email');
+  const now = new Date().toISOString();
+
+  for (const w of watchers) {
+    await sendEmail(
+      w.email,
+      `${ticker} layoff-risk status changed: ${previousState} → ${newState}`,
+      `<p>${ticker}'s layoff-risk state changed from <strong>${previousState}</strong> to <strong>${newState}</strong>.</p>
+       <p><a href="https://ejectseat.io/company/${encodeURIComponent(ticker)}">View the full score →</a></p>`,
+    );
+    await supabase.from('watches').update({ last_known_state: newState, last_notified_at: now }).eq('id', w.id);
+  }
+}
+
 async function logUsage(userId: string | null, req: NextRequest, companyName: string) {
   await supabase.from('score_usage').insert({
     user_id: userId,
@@ -334,8 +358,10 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    const previousState = cachedCo?.cached_state || null;
+
     if (useV2()) {
-      return await runV7Pipeline(req, companyName, ticker, eligibility, userId, isRegistered);
+      return await runV7Pipeline(req, companyName, ticker, eligibility, userId, isRegistered, previousState);
     }
 
     return await runV5Pipeline(req, companyName, ticker, eligibility, userId, isRegistered);
@@ -357,6 +383,7 @@ async function runV7Pipeline(
   eligibility: any,
   userId: string | null,
   isRegistered: boolean,
+  previousState: string | null = null,
 ) {
   const [bundlePart, transcripts, news, quarterlyStatus] = await Promise.all([
     fetchEvidenceBundle(eligibility.cik!, companyName, 365),
@@ -472,6 +499,8 @@ async function runV7Pipeline(
       cached_intelligence:        intel,
       cached_pipeline_version:    'v7.2',
     }).eq('id', companyId);
+
+    await notifyWatchers(eligibility.ticker || ticker, previousState, finalised.state);
   }
 
   if (finalised.score >= 70 && eligibility.secFilingFound) {

@@ -14,9 +14,10 @@
 //   - Stale-cache fallback on DB error.
 //   - Cache-Control headers for Vercel edge caching.
 //
-// Returns companies in LIKELY or ACTIVE state, most recently scored first,
-// from the last 14 days (the feed table is upserted per-company so "last 14
-// days" really means "still considered current as of the last cron run").
+// Returns companies in LIKELY or ACTIVE state, most recently filed first,
+// from the last 7 days (filtered/sorted by filed_at — the date of the actual
+// filing/article — not scored_at, so "last 7 days" reflects when the layoff
+// signal happened, not when our cron last touched the row).
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
@@ -43,13 +44,13 @@ let serverCache: { entries: ActiveLayoffEntry[]; builtAt: number } | null = null
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 async function buildActiveLayoffsList(): Promise<ActiveLayoffEntry[]> {
-  const cutoff = new Date(Date.now() - 14 * 24 * 3_600_000).toISOString();
+  const cutoff = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString().slice(0, 10);
   const { data, error } = await supabase
     .from('active_layoffs_feed')
     .select('company_name, ticker, score, band, state, key_signal, source_type, source_ref, filed_at, scored_at')
     .in('state', ['LIKELY', 'ACTIVE'])
-    .gte('scored_at', cutoff)
-    .order('scored_at', { ascending: false })
+    .gte('filed_at', cutoff)
+    .order('filed_at', { ascending: false })
     .limit(40);
 
   if (error) throw new Error(`Supabase: ${error.message}`);

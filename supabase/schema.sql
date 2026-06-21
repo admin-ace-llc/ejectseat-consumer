@@ -202,6 +202,96 @@ CREATE TABLE IF NOT EXISTS pipeline_comparison (
 CREATE INDEX IF NOT EXISTS pipeline_comparison_created_idx ON pipeline_comparison (created_at DESC);
 
 -- ─────────────────────────────────────────────────────────────────────────────
+-- active_layoffs_feed — codifying a table that previously existed only via
+-- the Supabase dashboard. Populated by app/api/cron/discover-active-layoffs
+-- and app/api/admin/backfill-active-layoffs. Read by app/api/active-layoffs.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS active_layoffs_feed (
+  id            uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_name  text UNIQUE NOT NULL,
+  ticker        text,
+  cik           text,
+  score         integer,
+  band          text,
+  state         text,
+  key_signal    text,
+  source_type   text,       -- sec_8k | sec_10k | sec_10q | media
+  source_ref    text,
+  filed_at      date,
+  scored_at     timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS active_layoffs_feed_scored_idx ON active_layoffs_feed (scored_at DESC);
+CREATE INDEX IF NOT EXISTS active_layoffs_feed_filed_idx  ON active_layoffs_feed (filed_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- company_comments — anonymous, no-login anecdote board per /company/[ticker]
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS company_comments (
+  id          uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  ticker      text NOT NULL,
+  body        text NOT NULL,
+  ip_hash     text,
+  created_at  timestamptz DEFAULT now(),
+  hidden      boolean DEFAULT false
+);
+
+CREATE INDEX IF NOT EXISTS company_comments_ticker_idx ON company_comments (ticker, created_at DESC);
+CREATE INDEX IF NOT EXISTS company_comments_iphash_idx ON company_comments (ip_hash, created_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- watches — email alerts when a watched ticker's state changes
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS watches (
+  id                uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email             citext NOT NULL,
+  ticker            text NOT NULL,
+  last_known_state  text,
+  last_notified_at  timestamptz,
+  created_at        timestamptz DEFAULT now(),
+  UNIQUE (email, ticker)
+);
+
+CREATE INDEX IF NOT EXISTS watches_ticker_idx ON watches (ticker);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- enterprise_leads — bulk data / report enquiries (layoffs.fyi-style hook)
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS enterprise_leads (
+  id          uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name        text,
+  email       text NOT NULL,
+  company     text,
+  use_case    text,
+  message     text,
+  created_at  timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS enterprise_leads_created_idx ON enterprise_leads (created_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- ca_warn_notices — California EDD WARN Act report cache (lib/warn/ca.ts).
+-- Source of truth is the EDD spreadsheet itself; this table only ever stores
+-- rows that were actually parsed from it — never a fabricated/estimated row.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ca_warn_notices (
+  id                  uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_name        text NOT NULL,
+  county              text,
+  notice_date         date,
+  effective_date      date,
+  received_date       date,
+  employees_affected  integer,
+  layoff_type         text,
+  raw                 jsonb,
+  fetched_at          timestamptz DEFAULT now(),
+  UNIQUE (company_name, county, notice_date, effective_date)
+);
+
+CREATE INDEX IF NOT EXISTS ca_warn_notices_effective_idx ON ca_warn_notices (effective_date DESC);
+CREATE INDEX IF NOT EXISTS ca_warn_notices_notice_idx    ON ca_warn_notices (notice_date DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
 -- Row-level security — service role only (frontend uses API routes, not direct DB)
 -- ─────────────────────────────────────────────────────────────────────────────
 ALTER TABLE companies          ENABLE ROW LEVEL SECURITY;
@@ -211,5 +301,10 @@ ALTER TABLE analytics_events   ENABLE ROW LEVEL SECURITY;
 ALTER TABLE beta_signups       ENABLE ROW LEVEL SECURITY;
 ALTER TABLE predictions        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pipeline_comparison ENABLE ROW LEVEL SECURITY;
+ALTER TABLE active_layoffs_feed ENABLE ROW LEVEL SECURITY;
+ALTER TABLE company_comments    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE watches             ENABLE ROW LEVEL SECURITY;
+ALTER TABLE enterprise_leads    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ca_warn_notices     ENABLE ROW LEVEL SECURITY;
 
 -- Service role bypasses RLS by default; no user-facing policies needed.

@@ -572,13 +572,13 @@ footer.site a{color:var(--text-dim)}
   <div class="lwt-header">
     <div class="lwt-eyebrow">
       <span class="lwt-live-dot" aria-hidden="true"></span>
-      Live · sourced from SEC EDGAR 8-K filings
+      Updated daily from SEC EDGAR &amp; Tier A/B media
     </div>
     <div class="lwt-title-row">
       <h2 class="lwt-title">Companies Currently Laying Off</h2>
       <span class="lwt-source-tag" id="lwt-source-tag">Loading…</span>
     </div>
-    <p class="lwt-sub">Top 10 SEC-listed companies with confirmed active workforce reductions, drawn from official SEC 8-K filings and Tier A/B media. Updated every 6 hours. Click any company to run a full predictive score.</p>
+    <p class="lwt-sub">Companies with layoff signals filed or reported in the last 7 days. CONFIRMED = official SEC filing or verified event. PREDICTED = strong forward-looking signals, not yet a confirmed event. Click any company to run a full score.</p>
   </div>
 
   <!-- Check-your-company CTA — always visible inside the section -->
@@ -602,6 +602,18 @@ footer.site a{color:var(--text-dim)}
       <div class="lwt-skel-row"></div>
     </div>
   </div>
+</section>
+
+<!-- CALIFORNIA WARN NOTICES — official EDD filings, last 7 days -->
+<section class="lwt-section" id="warn-ca-section" aria-label="California WARN Act notices" style="display:none">
+  <div class="lwt-header">
+    <div class="lwt-eyebrow">California WARN Act notices · official EDD filings</div>
+    <div class="lwt-title-row">
+      <h2 class="lwt-title">California WARN Notices (Last 7 Days)</h2>
+    </div>
+    <p class="lwt-sub" id="warn-ca-sub">Sourced directly from the California EDD WARN report. We only show rows successfully parsed from the official spreadsheet — never estimated.</p>
+  </div>
+  <div id="warn-ca-list" style="padding:6px 28px 20px"></div>
 </section>
 
 <!-- HIGH RISK WATCH (user-search-fed) -->
@@ -663,7 +675,8 @@ footer.site a{color:var(--text-dim)}
 <footer class="site">
   <div>© Admin-Ace LLC · Operated from the United States</div>
   <nav>
-    <a href="/how.html">How it works</a><a href="/privacy.html">Privacy</a>
+    <a href="/how.html">How it works</a><a href="/enterprise">Enterprise &amp; Data</a>
+    <a href="/privacy.html">Privacy</a>
     <a href="/terms.html">Terms</a><a href="mailto:enquiries.talkace@gmail.com">Contact</a>
   </nav>
 </footer>
@@ -780,16 +793,16 @@ let lwtPollTimer = null;
 
 async function fetchLayoffWatch() {
   try {
-    const res = await fetch('/api/layoff-watch');
+    const res = await fetch('/api/active-layoffs');
     if (!res.ok) return;
     const data = await res.json();
-    renderLayoffWatch(data.companies || [], data.source || 'curated');
+    renderLayoffWatch(data.companies || [], data.stale === true);
   } catch {
     // Keep skeleton visible on network error — retry on next poll
   }
 }
 
-function renderLayoffWatch(companies, source) {
+function renderLayoffWatch(companies, stale) {
   const list    = $('lwt-list');
   const skeleton = $('lwt-skeleton');
   const sourceTag = $('lwt-source-tag');
@@ -798,12 +811,12 @@ function renderLayoffWatch(companies, source) {
 
   // Update source badge
   if (sourceTag) {
-    sourceTag.textContent = source === 'live' ? '✓ Live from SEC EDGAR' : '✓ From verified SEC filings';
-    sourceTag.className = 'lwt-source-tag' + (source === 'live' ? ' live' : '');
+    sourceTag.textContent = stale ? '⚠ Showing last known data' : '✓ Updated daily';
+    sourceTag.className = 'lwt-source-tag' + (stale ? '' : ' live');
   }
 
   if (!companies || companies.length === 0) {
-    if (skeleton) skeleton.innerHTML = '<div style="padding:20px 28px;color:var(--text-faint);font-size:14px">Fetching latest SEC filings…</div>';
+    if (skeleton) skeleton.innerHTML = '<div style="padding:20px 28px;color:var(--text-faint);font-size:14px">No confirmed or predicted layoffs reported in the last 7 days.</div>';
     return;
   }
 
@@ -812,13 +825,15 @@ function renderLayoffWatch(companies, source) {
 
   const cards = companies.slice(0, 10).map(c => {
     const stateClass = c.state === 'ACTIVE' ? 'ACTIVE' : 'LIKELY';
+    const verdictLabel = stateClass === 'ACTIVE' ? 'CONFIRMED' : 'PREDICTED';
     const scoreColor = stateClass === 'ACTIVE' ? 'var(--red-text)' : 'var(--amber-text)';
     const scoreHtml  = c.score != null
       ? `<span class="lwt-score-tag" style="color:${scoreColor}">${c.score}<span>/100</span></span>`
       : '';
-    const filedLabel = c.filedAt ? fmtAge(c.filedAt) : '';
-    const srcClass   = c.source === 'edgar' ? 'edgar' : '';
-    const srcLabel   = c.source === 'edgar' ? 'SEC EDGAR' : 'Verified SEC filing';
+    const filedLabel = c.filedAt ? fmtAge(c.filedAt) : (c.scoredAt ? fmtAge(c.scoredAt) : '');
+    const isEdgar    = c.sourceType && c.sourceType.startsWith('sec_');
+    const srcClass   = isEdgar ? 'edgar' : '';
+    const srcLabel   = isEdgar ? 'SEC EDGAR' : 'Tier A/B media';
 
     const href = c.ticker ? `/company/${encodeURIComponent(c.ticker.toUpperCase())}` : null;
     const tag  = href ? 'a' : 'div';
@@ -828,12 +843,12 @@ function renderLayoffWatch(companies, source) {
   <div class="lwt-body">
     <div class="lwt-top-row">
       <div class="lwt-left-meta">
-        <span class="lwt-badge ${stateClass}">${stateClass}</span>
+        <span class="lwt-badge ${stateClass}">${verdictLabel}</span>
         ${scoreHtml}
       </div>
     </div>
     <div class="lwt-name">${h(c.name)}${c.ticker?`<span class="tk">${h(c.ticker)}</span>`:''}</div>
-    <div class="lwt-signal">${h(c.keySignal||'Workforce reduction disclosed in official SEC filing.')}</div>
+    <div class="lwt-signal">${h(c.keySignal||'Workforce reduction reported.')}</div>
     <div class="lwt-foot-row">
       <span class="lwt-filed">${h(filedLabel)}</span>
       <span class="lwt-source-chip ${srcClass}">${srcLabel}</span>
@@ -850,6 +865,45 @@ function renderLayoffWatch(companies, source) {
       setTimeout(() => card.classList.add('in'), i * 55);
     });
   });
+}
+
+/* ═══ CALIFORNIA WARN NOTICES ══════════════════════════════════════════ */
+
+async function fetchCaWarn() {
+  try {
+    const res = await fetch('/api/warn-ca');
+    if (!res.ok) return;
+    const data = await res.json();
+    renderCaWarn(data.notices || [], data.asOf || null);
+  } catch {
+    // silently skip — section stays hidden
+  }
+}
+
+function renderCaWarn(notices, asOf) {
+  const section = $('warn-ca-section');
+  const list = $('warn-ca-list');
+  const sub = $('warn-ca-sub');
+  if (!section || !list) return;
+
+  if (!notices || notices.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+
+  section.style.display = 'block';
+  if (sub) {
+    sub.textContent = asOf
+      ? `Sourced directly from the California EDD WARN report. Last fetched ${fmtAge(asOf)}. We only show rows successfully parsed from the official spreadsheet — never estimated.`
+      : 'Sourced directly from the California EDD WARN report. We only show rows successfully parsed from the official spreadsheet — never estimated.';
+  }
+
+  list.innerHTML = notices.slice(0, 20).map(n => `
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:11px 0;border-bottom:1px solid var(--border);font-size:13.5px">
+      <span style="color:var(--text)"><strong>${h(n.companyName)}</strong>${n.county ? ` · ${h(n.county)} County` : ''}${n.employeesAffected != null ? ` · ${h(String(n.employeesAffected))} employees` : ''}</span>
+      <span style="color:var(--text-faint);font-size:12px;white-space:nowrap">${h(n.effectiveDate || n.noticeDate || '')}</span>
+    </div>
+  `).join('');
 }
 
 function layoffActivate(event, companyName, ticker) {
@@ -908,6 +962,10 @@ function countryLabel(code){const opt=$('country-select').querySelector(`option[
   // Layoff Watch — fetch immediately, show skeleton while loading, 6h poll
   fetchLayoffWatch();
   lwtPollTimer = setInterval(fetchLayoffWatch, 6 * 60 * 60 * 1000);
+
+  // California WARN notices — fetch immediately, 6h poll
+  fetchCaWarn();
+  setInterval(fetchCaWarn, 6 * 60 * 60 * 1000);
 
   // High Risk Watch — fetch after 1s (lower priority), 5-min poll
   setTimeout(fetchHighRiskWatch, 1000);

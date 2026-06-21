@@ -1,7 +1,16 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { getCompanyByTicker } from '@/lib/supabase-server';
-import { fmtUSD, fmtRange, fmtPct, fmtDate, fmtAccession } from '@/lib/format';
+import { getCompanyByTicker, getScoreHistory, getSupabaseServerClient } from '@/lib/supabase-server';
+import { fmtUSD, fmtRange, fmtPct, fmtDate, fmtAccession, fmtRelative } from '@/lib/format';
+import WatchForm from './WatchForm';
+import CommentsSection from './CommentsSection';
+
+const VERDICT: Record<string, string> = {
+  CLEAR: 'No layoffs are currently expected based on public evidence.',
+  WATCH: 'Some forward-looking signals exist, but nothing confirmed yet.',
+  LIKELY: 'Multiple signals point toward layoffs, but no confirmed event yet — treat as a strong warning, not a certainty.',
+  ACTIVE: 'A layoff event has been confirmed via official filing or verified media.',
+};
 
 export const revalidate = 21600; // 6h — matches the registered-user cache TTL on /api/score
 export const dynamicParams = true;
@@ -102,6 +111,11 @@ export default async function CompanyPage({ params }: { params: { ticker: string
   const confirmedEvents = intel.confirmed_events || [];
   const forwardSignals = intel.forward_signals || [];
 
+  const [history, comments] = await Promise.all([
+    getScoreHistory(row.id),
+    loadInitialComments(row.ticker || ticker),
+  ]);
+
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'WebPage',
@@ -145,9 +159,17 @@ export default async function CompanyPage({ params }: { params: { ticker: string
         {state} — {STATE_DESC[state]}
       </span>
 
-      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 20 }}>
+      <p style={{ fontSize: 15, lineHeight: 1.55, color: colors.text, fontWeight: 600, marginBottom: 18 }}>
+        {VERDICT[state] || VERDICT.CLEAR}
+      </p>
+
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 14, marginBottom: 12 }}>
         <div style={{ fontSize: 48, fontWeight: 700, letterSpacing: '-0.02em' }}>{score}</div>
         <div style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>/ 100</div>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <WatchForm ticker={row.ticker || ticker} />
       </div>
 
       {summary && <p style={{ fontSize: 16, lineHeight: 1.6, color: '#0f172a', marginBottom: 24 }}>{summary}</p>}
@@ -211,10 +233,27 @@ export default async function CompanyPage({ params }: { params: { ticker: string
             Signals in evidence bundle
           </h2>
           {confirmedEvents.map((e: any, i: number) => (
-            <SignalRow key={`ce-${i}`} tag="Confirmed" msg={e.description} src={e.filing_type || fmtAccession(e.source_ref)} />
+            <SignalRow key={`ce-${i}`} tag="CONFIRMED" confirmed msg={e.description} src={e.filing_type || fmtAccession(e.source_ref)} />
           ))}
           {forwardSignals.slice(0, 8).map((s: any, i: number) => (
-            <SignalRow key={`fs-${i}`} tag={s.signal_type?.replace(/_/g, ' ')} msg={s.description} src={s.source_ref} />
+            <SignalRow key={`fs-${i}`} tag={(s.signal_type?.replace(/_/g, ' ') || 'predicted').toUpperCase()} msg={s.description} src={s.source_ref} />
+          ))}
+        </div>
+      )}
+
+      {history.length > 0 && (
+        <div style={{ marginBottom: 24 }}>
+          <h2 style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: 10 }}>
+            History
+          </h2>
+          {history.map((h, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '8px 0', borderBottom: '1px solid #e4e8ef', fontSize: 13.5 }}>
+              <span style={{ color: '#0f172a' }}>
+                <strong>{h.company_state || '—'}</strong> · {h.score}/100
+                {h.key_signal ? ` — ${h.key_signal}` : ''}
+              </span>
+              <span style={{ color: '#94a3b8', fontSize: 12, whiteSpace: 'nowrap', marginLeft: 12 }}>{fmtRelative(h.scored_at)}</span>
+            </div>
           ))}
         </div>
       )}
@@ -226,6 +265,13 @@ export default async function CompanyPage({ params }: { params: { ticker: string
         <Link href={`/?company=${encodeURIComponent(name)}&ticker=${encodeURIComponent(row.ticker || '')}`} style={cta}>
           Run live score →
         </Link>
+      </div>
+
+      <div style={{ marginBottom: 24 }}>
+        <h2 style={{ fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#64748b', marginBottom: 10 }}>
+          What people are saying
+        </h2>
+        <CommentsSection ticker={row.ticker || ticker} initialComments={comments} />
       </div>
 
       <p style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.55 }}>
@@ -292,10 +338,13 @@ function FunctionRow({ name, atRisk }: { name: string; atRisk?: boolean }) {
   );
 }
 
-function SignalRow({ tag, msg, src }: { tag: string; msg: string; src: string }) {
+function SignalRow({ tag, msg, src, confirmed }: { tag: string; msg: string; src: string; confirmed?: boolean }) {
+  const tagStyle = confirmed
+    ? { background: '#fef2f2', color: '#b91c1c', border: '1px solid #fecaca' }
+    : { background: '#fffbeb', color: '#92400e', border: '1px solid #fde68a' };
   return (
     <div style={{ display: 'flex', gap: 14, padding: '11px 0', borderBottom: '1px solid #e4e8ef' }}>
-      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', padding: '3px 8px', borderRadius: 4, background: '#f8fafc', border: '1px solid #e4e8ef', minWidth: 64, textAlign: 'center' }}>
+      <span style={{ flexShrink: 0, fontSize: 10, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', padding: '3px 8px', borderRadius: 4, minWidth: 76, textAlign: 'center', ...tagStyle }}>
         {tag}
       </span>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -304,6 +353,18 @@ function SignalRow({ tag, msg, src }: { tag: string; msg: string; src: string })
       </div>
     </div>
   );
+}
+
+async function loadInitialComments(ticker: string) {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from('company_comments')
+    .select('id, body, created_at')
+    .eq('ticker', ticker)
+    .eq('hidden', false)
+    .order('created_at', { ascending: false })
+    .limit(20);
+  return data || [];
 }
 
 const page: React.CSSProperties = {

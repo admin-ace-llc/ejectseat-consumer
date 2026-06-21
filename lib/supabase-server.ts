@@ -12,6 +12,7 @@ export function getSupabaseServerClient() {
 }
 
 export interface CachedCompanyRow {
+  id: string;
   name: string;
   legal_name: string | null;
   ticker: string | null;
@@ -35,7 +36,7 @@ export async function getCompanyByTicker(ticker: string): Promise<CachedCompanyR
   const { data } = await supabase
     .from('companies')
     .select(
-      'name, legal_name, ticker, cik, cached_score, cached_band, cached_state, cached_at, ' +
+      'id, name, legal_name, ticker, cik, cached_score, cached_band, cached_state, cached_at, ' +
       'cached_programme, cached_headcount, cached_function_risk, cached_bankruptcy, ' +
       'cached_large_employer_flag, cached_intelligence, cached_pipeline_version, last_scored_at',
     )
@@ -45,6 +46,26 @@ export async function getCompanyByTicker(ticker: string): Promise<CachedCompanyR
     .limit(1)
     .maybeSingle();
   return (data as CachedCompanyRow | null) ?? null;
+}
+
+export interface ScoreHistoryEntry {
+  score: number;
+  band: string;
+  quarter_label: string | null;
+  scored_at: string;
+  key_signal: string | null;
+  company_state: string | null;
+}
+
+export async function getScoreHistory(companyId: string): Promise<ScoreHistoryEntry[]> {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from('score_history')
+    .select('score, band, quarter_label, scored_at, key_signal, company_state')
+    .eq('company_id', companyId)
+    .order('scored_at', { ascending: false })
+    .limit(6);
+  return (data || []).reverse() as ScoreHistoryEntry[];
 }
 
 export async function listScoredTickers(): Promise<{ ticker: string; cached_at: string | null }[]> {
