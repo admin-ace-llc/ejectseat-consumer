@@ -108,6 +108,12 @@ export default async function CompanyPage({ params }: { params: { ticker: string
     name: `${name} layoff risk score`,
     url: `https://ejectseat.io/company/${row.ticker}`,
     description: summary || STATE_DESC[state],
+    about: {
+      '@type': 'Corporation',
+      name,
+      tickerSymbol: row.ticker,
+    },
+    publisher: { '@type': 'Organization', name: 'EjectSeat', url: 'https://ejectseat.io/' },
     breadcrumb: {
       '@type': 'BreadcrumbList',
       itemListElement: [
