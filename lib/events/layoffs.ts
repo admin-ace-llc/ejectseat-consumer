@@ -168,6 +168,16 @@ export async function lookupCompany(ticker: string): Promise<CompanyRef | null> 
   return row ? { name: prettyName(row.title), ticker: row.ticker.toUpperCase(), cik: String(row.cik_str).padStart(10, '0') } : null;
 }
 
+/** CIK → primary ticker (used so scored companies are saved with a ticker). */
+export async function tickerForCik(cik: string | null | undefined): Promise<string | null> {
+  if (!cik) return null;
+  const want = parseInt(cik, 10);
+  const list = await getJson('https://www.sec.gov/files/company_tickers.json', 86_400);
+  if (!list) return null;
+  const row = Object.values(list as Record<string, { cik_str: number; ticker: string }>).find((r) => r.cik_str === want);
+  return row ? row.ticker.toUpperCase() : null;
+}
+
 /** Every Item 2.05 8-K a company has filed since 2023, newest first. */
 export async function fetchCompanyEvents(cik: string, limit = 12): Promise<LayoffEvent[]> {
   const end = new Date();

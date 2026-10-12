@@ -6,6 +6,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = [
     { url: 'https://ejectseat.io/', changeFrequency: 'hourly', priority: 1 },
     { url: 'https://ejectseat.io/layoffs', changeFrequency: 'hourly', priority: 0.9 },
+    { url: 'https://ejectseat.io/warn', changeFrequency: 'daily', priority: 0.8 },
     { url: 'https://ejectseat.io/about', changeFrequency: 'monthly', priority: 0.5 },
     { url: 'https://ejectseat.io/check.html', changeFrequency: 'weekly', priority: 0.6 },
     { url: 'https://ejectseat.io/how.html', changeFrequency: 'monthly', priority: 0.5 },
