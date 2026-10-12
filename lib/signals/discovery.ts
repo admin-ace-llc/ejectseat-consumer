@@ -72,11 +72,12 @@ function formToSourceType(form: string): DiscoverySourceType {
   return 'sec_8k';
 }
 
-function parseDisplayName(displayName: string): { name: string; cik: string | null } {
-  // "SNAP INC (CIK 0001564408)" → { name: "SNAP INC", cik: "0001564408" }
-  const m = displayName.match(/^(.*?)\s*\(CIK\s*(\d+)\)\s*$/);
-  if (m) return { name: m[1].trim(), cik: m[2] };
-  return { name: displayName.trim(), cik: null };
+function parseDisplayName(displayName: string): { name: string; ticker: string | null; cik: string | null } {
+  // "Workday, Inc.  (WDAY)  (CIK 0001327811)" → { name: "Workday, Inc.", ticker: "WDAY", cik: "0001327811" }
+  const cik = displayName.match(/\(CIK\s*(\d+)\)/i)?.[1] ?? null;
+  const rest = displayName.replace(/\(CIK\s*\d+\)/i, '').trim();
+  const tm = rest.match(/\(([A-Z][A-Z0-9.\-]*)(?:,[^)]*)?\)\s*$/);
+  return { name: (tm ? rest.slice(0, tm.index) : rest).trim(), ticker: tm ? tm[1] : null, cik };
 }
 
 /**
@@ -115,12 +116,12 @@ export async function discoverFromEdgar(lookbackHours: number = 6): Promise<Disc
           seen.add(adsh);
 
           const displayName = hit._source?.display_names?.[0] || '';
-          const { name, cik } = parseDisplayName(displayName);
+          const { name, ticker, cik } = parseDisplayName(displayName);
           if (!name) continue;
 
           out.push({
             companyName: name,
-            ticker:      null, // resolved later by validateCompany() in the cron route
+            ticker,
             cik,
             sourceType:  formToSourceType(hit._source?.form || form),
             sourceRef:   `https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK=${cik}&type=${form}&accession_number=${adsh}`,

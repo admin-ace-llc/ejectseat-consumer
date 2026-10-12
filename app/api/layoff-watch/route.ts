@@ -20,6 +20,7 @@
 //   → { companies: LayoffWatchEntry[], fetchedAt, source: 'live'|'curated', fromCache }
 
 import { NextRequest, NextResponse } from 'next/server';
+import { fetchLayoffEvents } from '@/lib/events/layoffs';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -285,26 +286,29 @@ async function fetchEdgarLayoffCompanies(): Promise<LayoffWatchEntry[]> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 async function buildLayoffWatchList(): Promise<LayoffWatchEntry[]> {
-  let edgarEntries: LayoffWatchEntry[] = [];
-
+  // Primary source: 8-Ks carrying Item 2.05 (lib/events). Unlike the old phrase
+  // search this never matches earnings releases or exec-agreement exhibits.
+  let events: Awaited<ReturnType<typeof fetchLayoffEvents>> = [];
   try {
-    edgarEntries = await fetchEdgarLayoffCompanies();
+    events = await fetchLayoffEvents({ days: 60, limit: 12 });
   } catch (err: any) {
-    console.warn('[layoff-watch] EDGAR fetch failed, using curated:', err?.message);
+    console.warn('[layoff-watch] event fetch failed, using curated:', err?.message);
   }
+  const live: LayoffWatchEntry[] = events.map(e => ({
+    name: e.name,
+    ticker: e.ticker,
+    score: null,
+    state: 'ACTIVE' as const,
+    keySignal: e.headline,
+    filingRef: `8-K Item 2.05 · ${e.filedAt} · ${e.filingUrl}`,
+    filedAt: e.filedAt,
+    source: 'edgar' as const,
+  }));
+  if (live.length >= 8) return live.slice(0, 10);
 
-  // If EDGAR returns enough live results, use them
-  if (edgarEntries.length >= 8) {
-    return edgarEntries.slice(0, 10);
-  }
-
-  // Supplement with curated entries for companies not already in EDGAR results
-  const edgarNameKeys = new Set(edgarEntries.map(e => e.name.toLowerCase()));
-  const supplements = CURATED_FALLBACK.filter(
-    c => !edgarNameKeys.has(c.name.toLowerCase()),
-  ).slice(0, 10 - edgarEntries.length);
-
-  return [...edgarEntries, ...supplements].slice(0, 10);
+  const have = new Set(live.map(e => e.name.toLowerCase()));
+  const supplements = CURATED_FALLBACK.filter(c => !have.has(c.name.toLowerCase())).slice(0, 10 - live.length);
+  return [...live, ...supplements].slice(0, 10);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
