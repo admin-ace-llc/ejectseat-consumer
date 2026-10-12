@@ -7,7 +7,7 @@
 // No LLM and no database are required, so the feed is cheap, fresh and never
 // blocked behind the (expensive) risk-scoring pipeline.
 
-import { buildHeadline, extractItem205, htmlToText, parseDisplayName, parseItem205, EventKind } from './parse';
+import { buildHeadline, extractItem205, htmlToText, parseDisplayName, parseItem205, prettyName, EventKind } from './parse';
 
 const EFTS = 'https://efts.sec.gov/LATEST/search-index';
 const UA = 'EjectSeat/1.0 (enquiries.talkace@gmail.com)';
@@ -123,7 +123,9 @@ export async function fetchLayoffEvents(opts: { days?: number; limit?: number } 
 
   const events = await pool(picked, 4, async (h): Promise<LayoffEvent | null> => {
     const s = h._source;
-    const { name, ticker, cik } = parseDisplayName(s.display_names?.[0] ?? '');
+    const parsedName = parseDisplayName(s.display_names?.[0] ?? '');
+    const { ticker, cik } = parsedName;
+    const name = prettyName(parsedName.name);
     const cikRaw = cik ?? s.ciks?.[0] ?? null;
     const file = h._id.split(':')[1];
     if (!name || !cikRaw || !file) return null;

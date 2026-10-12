@@ -127,3 +127,16 @@ export function buildHeadline(name: string, p: ParsedEvent): string {
   }
   return `${short} files a restructuring plan`;
 }
+
+/** "FAIR ISAAC CORP" → "Fair Isaac Corp"; drops EDGAR state suffixes like "/OH/" or "/DE/". */
+export function prettyName(raw: string): string {
+  let n = raw.replace(/\s*\/[A-Z]{2,3}\/?\s*$/g, '').replace(/\s+/g, ' ').trim();
+  const letters = n.replace(/[^A-Za-z]/g, '');
+  if (letters.length > 3 && letters === letters.toUpperCase()) {
+    n = n
+      .toLowerCase()
+      .replace(/(^|[\s(\-/&])([a-z])/g, (_m, a, b) => a + b.toUpperCase())
+      .replace(/\b(Llc|Lp|Llp|Plc|Nv|Sa|Ag|Se|Usa|Us|Ii|Iii|Iv)\b/g, (m) => m.toUpperCase());
+  }
+  return n;
+}
