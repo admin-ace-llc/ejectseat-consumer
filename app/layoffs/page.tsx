@@ -2,7 +2,6 @@ import type { Metadata } from 'next';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import EventStrip from '@/components/EventStrip';
-import AlertSignup from '@/components/AlertSignup';
 import { fetchLayoffEvents } from '@/lib/events/layoffs';
 
 export const revalidate = 900;
@@ -62,12 +61,6 @@ export default async function LayoffsPage() {
         ) : (
           <ul className="feed">{events.map((e) => <EventStrip key={e.id} e={e} />)}</ul>
         )}
-
-        <section className="callout">
-          <h2>Get the Monday digest</h2>
-          <p>One email a week with every layoff filed in the last seven days. No spam, one-click unsubscribe.</p>
-          <AlertSignup source="digest" />
-        </section>
       </main>
       <SiteFooter />
     </>

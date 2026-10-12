@@ -1,7 +1,6 @@
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import EventStrip from '@/components/EventStrip';
-import AlertSignup from '@/components/AlertSignup';
 import Link from 'next/link';
 import { fetchLayoffEvents } from '@/lib/events/layoffs';
 
@@ -57,12 +56,6 @@ export default async function Home() {
           <ul className="feed">{events.map((e) => <EventStrip key={e.id} e={e} />)}</ul>
         )}
         <p style={{ marginTop: 14 }}><Link className="btn ghost" href="/layoffs">See every filing</Link></p>
-
-        <section className="callout">
-          <h2>Know before your company does</h2>
-          <p>Get a Monday email with every layoff filed that week. Free, and you can unsubscribe in one click.</p>
-          <AlertSignup source="digest" />
-        </section>
       </main>
       <SiteFooter />
     </>

@@ -3,7 +3,6 @@ import { notFound } from 'next/navigation';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
 import EventStrip from '@/components/EventStrip';
-import AlertSignup from '@/components/AlertSignup';
 import { fetchCompanyEvents, fmtDate, lookupCompany } from '@/lib/events/layoffs';
 
 export const revalidate = 3600;
@@ -80,16 +79,10 @@ export default async function CompanyLayoffs({ params }: Props) {
           <span className="meta">{events.length} found · <a href="/layoffs">All companies</a></span>
         </div>
         {events.length === 0 ? (
-          <p className="empty">Nothing filed under Item 2.05. Get the weekly digest to see when that changes.</p>
+          <p className="empty">Nothing filed under Item 2.05. Check back after the next filing, or follow the RSS feed.</p>
         ) : (
           <ul className="feed">{events.map((e) => <EventStrip key={e.id} e={e} />)}</ul>
         )}
-
-        <section className="callout">
-          <h2>Know when {company.ticker} files again</h2>
-          <p>The Monday digest lists every layoff filed that week, across all US public companies.</p>
-          <AlertSignup source={`company-${company.ticker}`} />
-        </section>
       </main>
       <SiteFooter />
     </>
