@@ -81,9 +81,9 @@ export default async function CompanyPage({ params }: { params: { ticker: string
           homepage and EjectSeat will read its SEC filings, earnings call transcripts, and
           Tier A/B media to produce a fresh score in under a minute.
         </p>
-        <Link href={`/?company=${encodeURIComponent(ticker)}&ticker=${encodeURIComponent(ticker)}`} style={cta}>
+        <a href={`/check.html?company=${encodeURIComponent(ticker)}&ticker=${encodeURIComponent(ticker)}`} style={cta}>
           Check {ticker} now →
-        </Link>
+        </a>
         <Footer />
       </main>
     );
@@ -108,6 +108,8 @@ export default async function CompanyPage({ params }: { params: { ticker: string
     name: `${name} layoff risk score`,
     url: `https://ejectseat.io/company/${row.ticker}`,
     description: summary || STATE_DESC[state],
+    about: { '@type': 'Corporation', name, tickerSymbol: row.ticker },
+    publisher: { '@type': 'Organization', name: 'EjectSeat', url: 'https://ejectseat.io/' },
     breadcrumb: {
       '@type': 'BreadcrumbList',
       itemListElement: [
@@ -223,9 +225,9 @@ export default async function CompanyPage({ params }: { params: { ticker: string
         <div style={{ fontSize: 14, color: '#0f172a' }}>
           This is a cached score from {fmtDate(row.cached_at)}. Run it live for the freshest evidence.
         </div>
-        <Link href={`/?company=${encodeURIComponent(name)}&ticker=${encodeURIComponent(row.ticker || '')}`} style={cta}>
+        <a href={`/check.html?company=${encodeURIComponent(name)}&ticker=${encodeURIComponent(row.ticker || '')}`} style={cta}>
           Run live score →
-        </Link>
+        </a>
       </div>
 
       <p style={{ fontSize: 12.5, color: '#64748b', lineHeight: 1.55 }}>

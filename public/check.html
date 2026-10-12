@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<head>
 <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-08WLHSJJ79"></script>
 <script>
@@ -11,17 +10,16 @@
   gtag('config', 'G-08WLHSJJ79');
 </script>
 <meta charset="UTF-8" />
-...rest of file  
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
 <!-- ═══ SEO ════════════════════════════════════════════════════════════════ -->
-<title>EjectSeat — Is Your Company Planning Layoffs? Check Now</title>
+<title>Check your company's layoff risk | EjectSeat</title>
 <meta name="description" content="EjectSeat predicts layoff risk for any US-listed public company before it hits the news. We read SEC filings, earnings call transcripts, and Tier A/B media to surface a forward-looking risk score." />
-<meta name="keywords" content="layoff risk, layoff predictor, company layoffs 2025, is my company laying off, SEC filing layoffs, tech layoffs, upcoming layoffs" />
-<link rel="canonical" href="https://ejectseat.io/" />
+<meta name="keywords" content="layoff risk, layoff predictor, company layoffs 2026, is my company laying off, SEC filing layoffs, tech layoffs, upcoming layoffs" />
+<link rel="canonical" href="https://ejectseat.io/check.html" />
 
 <meta property="og:type" content="website" />
-<meta property="og:url" content="https://ejectseat.io/" />
+<meta property="og:url" content="https://ejectseat.io/check.html" />
 <meta property="og:title" content="EjectSeat — Is Your Company Planning Layoffs?" />
 <meta property="og:description" content="Predict layoff risk for any US-listed public company. EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media to produce a forward-looking risk score." />
 <meta property="og:image" content="https://ejectseat.io/api/og" />
@@ -47,7 +45,7 @@
       "description": "Layoff risk predictor for US-listed public companies",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": { "@type": "EntryPoint", "urlTemplate": "https://ejectseat.io/?q={search_term_string}" },
+        "target": { "@type": "EntryPoint", "urlTemplate": "https://ejectseat.io/check.html?company={search_term_string}" },
         "query-input": "required name=search_term_string"
       }
     },
@@ -538,6 +536,7 @@ footer.site a{color:var(--text-dim)}
 </div>
 
 <!-- HERO -->
+<p style="max-width:720px;margin:16px auto 0;padding:0 20px;font-size:14px"><a href="/" style="color:inherit">← Latest layoffs</a></p>
 <section class="hero">
   <h1>Is your company heading for layoffs?</h1>
   <p class="lede">Search any US-listed public company. EjectSeat reads SEC filings, earnings call transcripts, and Tier A/B media to produce a forward-looking risk score — before the announcement hits.</p>
@@ -578,7 +577,7 @@ footer.site a{color:var(--text-dim)}
       <h2 class="lwt-title">Companies Currently Laying Off</h2>
       <span class="lwt-source-tag" id="lwt-source-tag">Loading…</span>
     </div>
-    <p class="lwt-sub">Top 10 SEC-listed companies with confirmed active workforce reductions, drawn from official SEC 8-K filings and Tier A/B media. Updated every 6 hours. Click any company to run a full predictive score.</p>
+    <p class="lwt-sub">Top 10 SEC-listed companies with confirmed active workforce reductions, drawn from official SEC 8-K filings and Tier A/B media. Updated daily. Click any company to run a full predictive score.</p>
   </div>
 
   <!-- Check-your-company CTA — always visible inside the section -->
@@ -896,7 +895,7 @@ function countryLabel(code){const opt=$('country-select').querySelector(`option[
 
   // Deep link from a /company/[ticker] permalink page ("Run live score →")
   const params=new URLSearchParams(window.location.search);
-  const deepCompany=params.get('company'),deepTicker=params.get('ticker');
+  const deepCompany=params.get('company')||params.get('q'),deepTicker=params.get('ticker');
   if(deepCompany){
     queryEl.value=deepCompany;
     beacon('deep_link_score',{companyName:deepCompany,ticker:deepTicker});
