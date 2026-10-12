@@ -1,0 +1,14 @@
+# EjectSeat
+
+> EjectSeat is a live feed of US public-company layoffs and restructurings, read directly from SEC EDGAR filings (Form 8-K, Item 2.05), plus a forward-looking layoff risk checker.
+
+## Key pages
+- [Latest layoffs](https://ejectseat.io/layoffs): every Item 2.05 filing of the last 60 days, with % of workforce, jobs, charges and a link to the filing
+- [RSS feed](https://ejectseat.io/layoffs/feed.xml)
+- [How we source layoff news](https://ejectseat.io/about): coverage, limits and corrections
+- [Risk checker](https://ejectseat.io/check.html): forward-looking layoff risk score for a US-listed company
+- Company history: https://ejectseat.io/layoffs/{TICKER} (for example /layoffs/WDAY)
+
+## Notes for citation
+- Figures are stated by the company in its SEC filing; each item links to the source filing.
+- Risk scores are estimates, not facts, and not investment advice.

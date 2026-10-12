@@ -33,7 +33,7 @@ export default function EventStrip({ e }: { e: LayoffEvent }) {
           <a href={e.filingUrl} target="_blank" rel="noopener noreferrer">{e.headline}</a>
         </h3>
         <div className="co">
-          {e.name}{e.ticker ? ` (${e.ticker})` : ''} · filed {daysAgo(e.filedAt)}
+          {e.ticker ? <Link href={`/layoffs/${e.ticker}`} prefetch={false}>{e.name} ({e.ticker})</Link> : e.name} · filed {daysAgo(e.filedAt)}
         </div>
         <p className="sum">{e.summary}</p>
         <div className="chips">
@@ -42,8 +42,7 @@ export default function EventStrip({ e }: { e: LayoffEvent }) {
           {charges && <span className="chip">{charges}</span>}
           <span className="chip">{e.kind === 'workforce' ? 'Workforce reduction' : 'Restructuring'}</span>
           <a href={e.filingUrl} target="_blank" rel="noopener noreferrer">SEC filing ↗</a>
-          {e.ticker && <Link href={`/company/${e.ticker}`} prefetch={false}>Risk score</Link>}
-          <a href={scoreHref}>Check now</a>
+          <a href={scoreHref}>Check risk</a>
         </div>
       </div>
     </li>
