@@ -215,12 +215,14 @@ async function fetchEdgarLayoffCompanies(): Promise<LayoffWatchEntry[]> {
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - LOOKBACK_DAYS);
   const startdt = cutoff.toISOString().slice(0, 10);
+  // EDGAR EFTS silently ignores startdt unless enddt is also supplied.
+  const enddt = new Date().toISOString().slice(0, 10);
 
   // Run two targeted queries in parallel to maximise recall
   const [r1, r2, r3] = await Promise.all([
-    fetchJSON(`${EDGAR_EFTS}?q=%22workforce+reduction%22&forms=8-K&dateRange=custom&startdt=${startdt}`),
-    fetchJSON(`${EDGAR_EFTS}?q=%22reduction+in+force%22&forms=8-K&dateRange=custom&startdt=${startdt}`),
-    fetchJSON(`${EDGAR_EFTS}?q=%22reduction+in+workforce%22&forms=8-K&dateRange=custom&startdt=${startdt}`),
+    fetchJSON(`${EDGAR_EFTS}?q=%22workforce+reduction%22&forms=8-K&dateRange=custom&startdt=${startdt}&enddt=${enddt}`),
+    fetchJSON(`${EDGAR_EFTS}?q=%22reduction+in+force%22&forms=8-K&dateRange=custom&startdt=${startdt}&enddt=${enddt}`),
+    fetchJSON(`${EDGAR_EFTS}?q=%22reduction+in+workforce%22&forms=8-K&dateRange=custom&startdt=${startdt}&enddt=${enddt}`),
   ]);
 
   const allHits: any[] = [
