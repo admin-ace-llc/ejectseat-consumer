@@ -1,11 +1,12 @@
 import type { MetadataRoute } from 'next';
 import { listScoredTickers } from '@/lib/supabase-server';
+import { fetchLayoffEvents } from '@/lib/events/layoffs';
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const staticEntries: MetadataRoute.Sitemap = [
     { url: 'https://ejectseat.io/', changeFrequency: 'hourly', priority: 1 },
-    { url: 'https://ejectseat.io/companies', changeFrequency: 'daily', priority: 0.9 },
     { url: 'https://ejectseat.io/layoffs', changeFrequency: 'hourly', priority: 0.9 },
+    { url: 'https://ejectseat.io/about', changeFrequency: 'monthly', priority: 0.5 },
     { url: 'https://ejectseat.io/check.html', changeFrequency: 'weekly', priority: 0.6 },
     { url: 'https://ejectseat.io/how.html', changeFrequency: 'monthly', priority: 0.5 },
     { url: 'https://ejectseat.io/privacy.html', changeFrequency: 'yearly', priority: 0.1 },
@@ -33,5 +34,19 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // DB unreachable at build/request time — ship the static entries only.
   }
 
-  return [...staticEntries, ...companyEntries];
+  // One layoff-history page per ticker that filed an Item 2.05 8-K in the last 120 days.
+  let historyEntries: MetadataRoute.Sitemap = [];
+  try {
+    const events = await fetchLayoffEvents({ days: 120, limit: 100 });
+    const seen = new Set<string>();
+    for (const e of events) {
+      if (!e.ticker || seen.has(e.ticker)) continue;
+      seen.add(e.ticker);
+      historyEntries.push({ url: `https://ejectseat.io/layoffs/${e.ticker}`, lastModified: new Date(e.filedAt + 'T00:00:00Z'), changeFrequency: 'weekly', priority: 0.7 });
+    }
+  } catch {
+    // SEC unreachable — skip history pages this time.
+  }
+
+  return [...staticEntries, ...historyEntries, ...companyEntries];
 }

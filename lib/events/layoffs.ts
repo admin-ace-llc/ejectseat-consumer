@@ -89,25 +89,10 @@ async function pool<T, R>(items: T[], size: number, fn: (t: T) => Promise<R>): P
   return out;
 }
 
-/**
- * Latest Item 2.05 8-Ks, newest first.
- * @param days    look-back window (EDGAR ignores startdt without enddt — both are always sent)
- * @param limit   max events returned
- */
-export async function fetchLayoffEvents(opts: { days?: number; limit?: number } = {}): Promise<LayoffEvent[]> {
-  const days = opts.days ?? 45;
-  const limit = opts.limit ?? 40;
-  const end = new Date();
-  const start = new Date(end.getTime() - days * 86_400_000);
+const PHRASE = encodeURIComponent('"Costs Associated with Exit or Disposal Activities"');
 
-  // Item 2.05 appears in the main 8-K document, so a phrase search for the
-  // item title surfaces exactly the filings that carry it. Two pages cover
-  // typical volumes (~25–40 a month).
-  const base = `${EFTS}?q=${encodeURIComponent('"Costs Associated with Exit or Disposal Activities"')}&forms=8-K&dateRange=custom&startdt=${iso(start)}&enddt=${iso(end)}`;
-  const pages = await Promise.all([0, 100].map((from) => getJson(`${base}&from=${from}`, 1800)));
-  const hits: EftsHit[] = pages.flatMap((p) => p?.hits?.hits ?? []);
-
-  // One main document per accession, and only filings that really carry Item 2.05.
+/** Turn EFTS hits into events: one main document per filing, Item 2.05 only, newest first. */
+async function hitsToEvents(hits: EftsHit[], limit: number): Promise<LayoffEvent[]> {
   const byAdsh = new Map<string, EftsHit>();
   for (const h of hits) {
     const s = h._source;
@@ -153,8 +138,42 @@ export async function fetchLayoffEvents(opts: { days?: number; limit?: number } 
       items: s.items ?? [],
     };
   });
-
   return events.filter((e): e is LayoffEvent => !!e);
+}
+
+/**
+ * Latest Item 2.05 8-Ks, newest first.
+ * @param days    look-back window (EDGAR ignores startdt without enddt — both are always sent)
+ * @param limit   max events returned
+ */
+export async function fetchLayoffEvents(opts: { days?: number; limit?: number } = {}): Promise<LayoffEvent[]> {
+  const days = opts.days ?? 45;
+  const limit = opts.limit ?? 40;
+  const end = new Date();
+  const start = new Date(end.getTime() - days * 86_400_000);
+  const base = `${EFTS}?q=${PHRASE}&forms=8-K&dateRange=custom&startdt=${iso(start)}&enddt=${iso(end)}`;
+  const pages = await Promise.all([0, 100].map((from) => getJson(`${base}&from=${from}`, 1800)));
+  return hitsToEvents(pages.flatMap((p) => p?.hits?.hits ?? []), limit);
+}
+
+export interface CompanyRef { name: string; ticker: string; cik: string }
+
+/** Ticker → CIK via SEC's public company list (cached for a day). */
+export async function lookupCompany(ticker: string): Promise<CompanyRef | null> {
+  const t = ticker.toUpperCase();
+  if (!/^[A-Z0-9.\-]{1,10}$/.test(t)) return null;
+  const list = await getJson('https://www.sec.gov/files/company_tickers.json', 86_400);
+  if (!list) return null;
+  const row = Object.values(list as Record<string, { cik_str: number; ticker: string; title: string }>).find((r) => r.ticker.toUpperCase() === t);
+  return row ? { name: prettyName(row.title), ticker: row.ticker.toUpperCase(), cik: String(row.cik_str).padStart(10, '0') } : null;
+}
+
+/** Every Item 2.05 8-K a company has filed since 2023, newest first. */
+export async function fetchCompanyEvents(cik: string, limit = 12): Promise<LayoffEvent[]> {
+  const end = new Date();
+  const url = `${EFTS}?q=${PHRASE}&forms=8-K&ciks=${cik}&dateRange=custom&startdt=2023-01-01&enddt=${iso(end)}`;
+  const page = await getJson(url, 3600);
+  return hitsToEvents(page?.hits?.hits ?? [], limit);
 }
 
 export function fmtDate(iso: string): string {

@@ -10,7 +10,7 @@ export default function SiteFooter() {
         </p>
         <nav aria-label="Footer">
           <Link href="/layoffs">Latest layoffs</Link>
-          <Link href="/companies">Risk scores</Link>
+          <Link href="/about">How we source</Link>
           <a href="/how.html">How it works</a>
           <a href="/privacy.html">Privacy</a>
           <a href="/terms.html">Terms</a>
