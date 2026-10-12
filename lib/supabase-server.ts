@@ -56,3 +56,36 @@ export async function listScoredTickers(): Promise<{ ticker: string; cached_at: 
     .not('cached_score', 'is', null);
   return (data as { ticker: string; cached_at: string | null }[] | null) ?? [];
 }
+
+export interface ScoredCompanySummary {
+  name: string;
+  legal_name: string | null;
+  ticker: string;
+  cached_score: number | null;
+  cached_state: string | null;
+  cached_at: string | null;
+}
+
+// Feeds the /companies hub page. One row per ticker (the most recently scored
+// row wins, matching getCompanyByTicker), capped so the page stays a sane size.
+export async function listScoredCompanies(limit = 1000): Promise<ScoredCompanySummary[]> {
+  const supabase = getSupabaseServerClient();
+  const { data } = await supabase
+    .from('companies')
+    .select('name, legal_name, ticker, cached_score, cached_state, cached_at')
+    .not('ticker', 'is', null)
+    .not('cached_score', 'is', null)
+    .order('cached_at', { ascending: false })
+    .limit(limit * 2); // headroom for duplicate tickers, removed below
+
+  const seen = new Set<string>();
+  const rows: ScoredCompanySummary[] = [];
+  for (const r of (data as ScoredCompanySummary[] | null) ?? []) {
+    const t = (r.ticker || '').toUpperCase();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    rows.push({ ...r, ticker: t });
+    if (rows.length >= limit) break;
+  }
+  return rows;
+}
