@@ -6,6 +6,7 @@
 - [Latest layoffs](https://ejectseat.io/layoffs): every Item 2.05 filing of the last 60 days, with % of workforce, jobs, charges and a link to the filing
 - [RSS feed](https://ejectseat.io/layoffs/feed.xml)
 - [How we source layoff news](https://ejectseat.io/about): coverage, limits and corrections
+- [WARN notices](https://ejectseat.io/warn): state layoff notices from Texas and Maryland, including private companies
 - [Risk checker](https://ejectseat.io/check.html): forward-looking layoff risk score for a US-listed company
 - Company history: https://ejectseat.io/layoffs/{TICKER} (for example /layoffs/WDAY)
 

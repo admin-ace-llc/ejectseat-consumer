@@ -26,6 +26,7 @@
 // CACHE TTLs (unchanged from v7.1):
 //   Anonymous: 72h | Registered: 24h
 
+import { tickerForCik } from '@/lib/events/layoffs';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { validateCompany } from '@/lib/signals/company-validator';
@@ -77,16 +78,24 @@ async function getScoreHistory(companyId: string): Promise<any[]> {
   return (data || []).reverse();
 }
 
+// Vercel's default function limit is far below a full evidence-gather + Sonnet pass.
+export const maxDuration = 60;
+
 async function upsertCompany(
   eligibility: any, companyName: string, ticker: string | undefined,
   score: number, band: string, state: string,
 ): Promise<string | null> {
+  // Searches by name arrive without a ticker; resolve it from the SEC list so the
+  // company gets a permalink page and shows up on /companies.
+  const resolvedTicker = eligibility.legalName !== 'PRIVATE'
+    ? (ticker || (await tickerForCik(eligibility.cik)) || null)
+    : null;
   const { data } = await supabase
     .from('companies')
     .upsert({
       name:             companyName,
       legal_name:       eligibility.legalName,
-      ticker:           eligibility.legalName !== 'PRIVATE' ? ticker : null,
+      ticker:           resolvedTicker,
       cik:              eligibility.cik,
       is_us_listed:     eligibility.isUSListed,
       is_public:        eligibility.isPublicCompany,

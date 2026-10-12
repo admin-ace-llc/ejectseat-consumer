@@ -27,6 +27,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { discoverActiveLayoffCandidates, DiscoveryCandidate } from '@/lib/signals/discovery';
 import type { RiskScore, ScoreApiRequest } from '@/types';
+import { fetchLayoffEvents } from '@/lib/events/layoffs';
+
+// The cron must finish inside one function invocation.
+export const maxDuration = 60;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -35,7 +39,8 @@ const supabase = createClient(
 
 // Cap how many new companies we score per cron run. Each /api/score call is a
 // full evidence-gather + Sonnet pass, so this bounds runtime and API cost.
-const MAX_CANDIDATES_PER_RUN = 12;
+const MAX_CANDIDATES_PER_RUN = 5;      // scored in parallel, so one run fits in maxDuration
+const SCORE_CONCURRENCY = 5;
 
 // Don't re-score a company that's already in the feed with a recent score.
 // Set to ~22h since the cron now runs once daily (Vercel Hobby plan limit).
@@ -46,6 +51,18 @@ function baseUrl(req: NextRequest): string {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
   if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
   return req.nextUrl.origin;
+}
+
+async function recentlyScoredAnyState(c: DiscoveryCandidate): Promise<boolean> {
+  if (!c.ticker) return false;
+  const cutoff = new Date(Date.now() - 7 * 24 * 3_600_000).toISOString();
+  const { data } = await supabase
+    .from('companies')
+    .select('id')
+    .ilike('ticker', c.ticker)
+    .gte('last_scored_at', cutoff)
+    .limit(1);
+  return !!(data && data.length > 0);
 }
 
 async function recentlyScored(companyName: string): Promise<boolean> {
@@ -149,12 +166,25 @@ export async function GET(req: NextRequest) {
   };
 
   try {
-    const candidates = await discoverActiveLayoffCandidates({ edgarLookbackHours: 26, mediaLookbackHours: 26 });
+    // Item 2.05 filings from the last 14 days come first: they carry a ticker and a
+    // primary-source filing, so they are the best candidates to score and publish.
+    const events = await fetchLayoffEvents({ days: 14, limit: 30 }).catch(() => []);
+    const eventCandidates: DiscoveryCandidate[] = events
+      .filter((e) => e.ticker)
+      .map((e) => ({ companyName: e.name, ticker: e.ticker, cik: e.cik, sourceType: 'sec_8k' as const, sourceRef: e.filingUrl, filedAt: e.filedAt }));
+    const discovered = await discoverActiveLayoffCandidates({ edgarLookbackHours: 26, mediaLookbackHours: 26 });
+    const seenNames = new Set<string>();
+    const candidates = [...eventCandidates, ...discovered].filter((c) => {
+      const k = c.companyName.toLowerCase().replace(/[.,]/g, '').trim();
+      if (seenNames.has(k)) return false;
+      seenNames.add(k);
+      return true;
+    });
     summary.discovered = candidates.length;
 
     const toScore: DiscoveryCandidate[] = [];
     for (const c of candidates) {
-      if (await recentlyScored(c.companyName)) {
+      if ((await recentlyScored(c.companyName)) || (await recentlyScoredAnyState(c))) {
         summary.skippedRecentlyScored++;
         continue;
       }
@@ -162,17 +192,19 @@ export async function GET(req: NextRequest) {
       if (toScore.length >= MAX_CANDIDATES_PER_RUN) break;
     }
 
-    for (const candidate of toScore) {
-      const score = await scoreCandidate(req, candidate);
-      if (!score) {
-        summary.errors++;
-        continue;
-      }
-      summary.scored++;
-      const before = summary.addedToFeed;
-      await upsertFeedEntry(candidate, score);
-      // upsertFeedEntry doesn't return whether it wrote — re-check state cheaply
-      if (score.companyState === 'LIKELY' || score.companyState === 'ACTIVE') summary.addedToFeed = before + 1;
+    for (let i = 0; i < toScore.length; i += SCORE_CONCURRENCY) {
+      await Promise.all(
+        toScore.slice(i, i + SCORE_CONCURRENCY).map(async (candidate) => {
+          const score = await scoreCandidate(req, candidate);
+          if (!score) {
+            summary.errors++;
+            return;
+          }
+          summary.scored++;
+          await upsertFeedEntry(candidate, score);
+          if (score.companyState === 'LIKELY' || score.companyState === 'ACTIVE') summary.addedToFeed++;
+        }),
+      );
     }
 
     return NextResponse.json({
