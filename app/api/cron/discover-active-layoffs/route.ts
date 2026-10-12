@@ -28,6 +28,8 @@ import { createClient } from '@supabase/supabase-js';
 import { discoverActiveLayoffCandidates, DiscoveryCandidate } from '@/lib/signals/discovery';
 import type { RiskScore, ScoreApiRequest } from '@/types';
 import { fetchLayoffEvents } from '@/lib/events/layoffs';
+import { pingIndexNow } from '@/lib/indexnow';
+import { listArticles } from '@/lib/content';
 
 // The cron must finish inside one function invocation.
 export const maxDuration = 60;
@@ -207,8 +209,23 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // Tell search engines about fresh pages (best-effort, never fails the job).
+    let indexNow = false;
+    try {
+      const recent = await fetchLayoffEvents({ days: 7, limit: 30 });
+      const cutoff = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10);
+      const urls = [
+        'https://ejectseat.io/',
+        'https://ejectseat.io/layoffs',
+        ...recent.filter((e) => e.ticker).map((e) => `https://ejectseat.io/layoffs/${e.ticker}`),
+        ...listArticles().filter((a) => a.updated >= cutoff).map((a) => `https://ejectseat.io/insights/${a.slug}`),
+      ];
+      indexNow = await pingIndexNow(urls);
+    } catch {}
+
     return NextResponse.json({
       ok: true,
+      indexNow,
       tookMs: Date.now() - startedAt,
       ...summary,
     });

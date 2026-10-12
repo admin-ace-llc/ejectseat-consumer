@@ -88,3 +88,11 @@ a { color: inherit; }
   .strip .when { display: flex; gap: 8px; align-items: baseline; }
   .strip .when b { display: inline; font-size: 16px; }
 }
+
+/* article prose */
+.prose { max-width: 68ch; line-height: 1.7; }
+.prose h2 { font-family: var(--display); font-stretch: 110%; margin: 32px 0 8px; font-size: 24px; }
+.prose h3 { margin: 24px 0 6px; font-size: 18px; }
+.prose p, .prose ul { margin: 0 0 16px; }
+.prose ul { padding-left: 22px; }
+.prose a { text-decoration: underline; text-underline-offset: 3px; }
