@@ -218,13 +218,16 @@ function parseTables(html: string, src: TableSource): WarnNotice[] {
   return out;
 }
 
-async function fetchTableSource(src: TableSource): Promise<WarnNotice[]> {
+async function fetchTableSource(src: TableSource, diag?: string[]): Promise<WarnNotice[]> {
   const pages = await Promise.all(
     src.urls().map(async (u) => {
       try {
         const res = await fetch(u, { headers: { 'User-Agent': UA, Accept: 'text/html' }, signal: AbortSignal.timeout(9000), next: { revalidate: 3600 } });
-        return res.ok ? await res.text() : '';
-      } catch {
+        const html = res.ok ? await res.text() : '';
+        diag?.push(`${u.replace(/^https?:\/\/[^/]+/, '')} -> HTTP ${res.status}, ${html.length} bytes, ${(html.match(/<table/gi) ?? []).length} tables`);
+        return html;
+      } catch (e: any) {
+        diag?.push(`${u.replace(/^https?:\/\/[^/]+/, '')} -> ${e?.name || 'error'}`);
         return '';
       }
     }),
@@ -239,29 +242,31 @@ async function fetchTableSource(src: TableSource): Promise<WarnNotice[]> {
       /* bad page: skip */
     }
   }
+  diag?.push(`parsed ${all.length} rows`);
   return all;
 }
 
 export interface WarnReport {
   notices: WarnNotice[];
-  sources: { state: string; name: string; count: number }[];
+  sources: { state: string; name: string; count: number; diag?: string[] }[];
 }
 
 /** WARN notices from all reachable sources (newest first) plus per-source counts for monitoring. */
 export async function fetchWarnReport(days = 90): Promise<WarnReport> {
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString().slice(0, 10);
   const today = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10); // drop obviously future-dated typos
+  const diags: Record<string, string[]> = {};
   const jobs: { state: string; name: string; run: Promise<WarnNotice[]> }[] = [
     { state: 'TX', name: 'Texas Workforce Commission', run: fetchTexas(days) },
     { state: 'MD', name: 'Maryland Dept. of Labor', run: fetchMaryland() },
-    ...TABLE_SOURCES.map((s) => ({ state: s.state, name: s.name, run: fetchTableSource(s) })),
+    ...TABLE_SOURCES.map((s) => ({ state: s.state, name: s.name, run: fetchTableSource(s, (diags[s.state] = [])) })),
   ];
   const results = await Promise.all(jobs.map((j) => j.run.catch(() => [] as WarnNotice[])));
   const notices: WarnNotice[] = [];
   const sources = jobs.map((j, i) => {
     const kept = results[i].filter((n) => n.noticeDate >= cutoff && n.noticeDate <= today);
     notices.push(...kept);
-    return { state: j.state, name: j.name, count: kept.length };
+    return { state: j.state, name: j.name, count: kept.length, ...(diags[j.state] ? { diag: diags[j.state] } : {}) };
   });
   notices.sort((a, b) => b.noticeDate.localeCompare(a.noticeDate));
   return { notices, sources };
