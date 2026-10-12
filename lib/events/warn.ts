@@ -69,12 +69,12 @@ async function fetchMaryland(): Promise<WarnNotice[]> {
       if (cells.length < 8) continue;
       const noticeDate = mdy(cells[0]);
       if (!noticeDate) continue; // header or malformed row
-      const [, , company, location, area, total, effective, type] = cells;
+      const [, , company, , area, total, effective, type] = cells;
       out.push({
         id: `md-${noticeDate}-${company.slice(0, 24)}`,
         state: 'MD',
         company,
-        location: [location.split(',').slice(-2).join(',').trim() || area, 'MD'].filter(Boolean).join(', '),
+        location: `${area || 'Maryland'}, MD`,
         employees: parseInt(total.replace(/,/g, ''), 10) || null,
         noticeDate,
         effectiveDate: mdy(effective),
