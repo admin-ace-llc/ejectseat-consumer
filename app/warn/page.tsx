@@ -1,7 +1,7 @@
 import type { Metadata } from 'next';
 import SiteHeader from '@/components/SiteHeader';
 import SiteFooter from '@/components/SiteFooter';
-import { fetchWarnNotices } from '@/lib/events/warn';
+import { fetchWarnReport } from '@/lib/events/warn';
 import { daysAgo, fmtDate } from '@/lib/events/layoffs';
 
 export const revalidate = 3600;
@@ -9,12 +9,13 @@ export const revalidate = 3600;
 export const metadata: Metadata = {
   title: 'WARN layoff notices from state labor departments',
   description:
-    'Mass layoff and plant closing notices filed with state labor departments (WARN Act), including private companies. Currently Texas and Maryland, with links to each state source.',
+    'Mass layoff and plant closing notices filed with state labor departments (WARN Act), including private companies. Ten states so far, each linked to its official source.',
   alternates: { canonical: 'https://ejectseat.io/warn' },
 };
 
 export default async function WarnPage() {
-  const notices = await fetchWarnNotices(120);
+  const { notices, sources } = await fetchWarnReport(120);
+  const live = sources.filter((x) => x.count > 0);
   const total = notices.reduce((n, r) => n + (r.employees ?? 0), 0);
 
   return (
@@ -25,9 +26,15 @@ export default async function WarnPage() {
           <h1>WARN notices: layoffs filed with the state</h1>
           <p className="lede">
             Employers must warn the state before a mass layoff or plant closing. These notices include private companies
-            that never file with the SEC. We read the public lists from Texas and Maryland; more states are planned.
+            that never file with the SEC. We read the official public lists from {live.length > 0 ? live.length : 'several'} states and link every notice to its source.
           </p>
         </section>
+
+        {live.length > 0 && (
+          <p className="meta" style={{ marginBottom: 12 }}>
+            Covered now: {live.map((x) => `${x.state} (${x.count})`).join(' · ')}
+          </p>
+        )}
 
         <div className="feed-head">
           <h2>Last 120 days</h2>
@@ -64,7 +71,7 @@ export default async function WarnPage() {
         )}
         <p className="empty" style={{ fontSize: 14 }}>
           A WARN notice is advance warning, so the layoff date can differ from the filing date. Some states publish with
-          a delay; Texas&apos;s list is updated less often than Maryland&apos;s.
+          a delay, so a notice can appear days after it was filed. Large states such as California and New York are not included yet because they do not publish a list we can read automatically.
         </p>
       </main>
       <SiteFooter />

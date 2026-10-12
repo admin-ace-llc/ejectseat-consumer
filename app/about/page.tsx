@@ -38,14 +38,14 @@ export default function About() {
           <li>Private companies and subsidiaries of foreign companies that do not file 8-Ks.</li>
           <li>Layoffs a company judges too small to disclose, and cuts reported only by the press.</li>
           <li>Layoffs announced in a press release before the 8-K is filed. We publish when the filing appears.</li>
-          <li>Most state WARN notices. We read only Texas and Maryland so far (see <a href="/warn">WARN notices</a>).</li>
+          <li>Some state WARN notices. We read ten states so far and not the large ones that publish only spreadsheets or search forms (see <a href="/warn">WARN notices</a>).</li>
         </ul>
 
         <h2>WARN notices</h2>
         <p>
           States publish mass-layoff and plant-closing notices under the federal WARN Act. These include private
-          companies. We read the public lists from Texas (Workforce Commission open data) and Maryland (Department of
-          Labor) and link to each source. Other states are not included yet.
+          companies. We read the official public lists from Texas, Maryland, Missouri, Indiana, North Carolina, Oregon, Tennessee, Utah,
+          Virginia and Nebraska, and link each notice to its source. Other states are not included yet.
         </p>
 
         <h2>Risk scores</h2>
