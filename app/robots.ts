@@ -3,7 +3,11 @@ import type { MetadataRoute } from 'next';
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
-      { userAgent: '*', allow: '/', disallow: ['/api/'] },
+      {
+        userAgent: '*',
+        allow: ['/', '/api/health', '/api/events'],
+        disallow: ['/api/'],
+      },
     ],
     sitemap: 'https://ejectseat.io/sitemap.xml',
   };
